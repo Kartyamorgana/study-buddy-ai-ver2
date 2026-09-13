@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+// src/components/stem/StemPractice.tsx
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
+  BarChart3,
   Loader2,
   Lightbulb,
   Timer,
@@ -20,6 +23,12 @@ import {
   type SubjectId,
   type StemQuestion,
 } from "@/lib/stem.functions";
+import {
+  createStemSession,
+  finishStemSession,
+  insertStemQuestions,
+} from "@/lib/stem-db";
+import { computeScore } from "@/lib/stem-schema";
 
 type Difficulty = "easy" | "medium" | "hard" | "hots";
 const DIFFS: { id: Difficulty; label: string }[] = [
@@ -69,9 +78,13 @@ export function StemPractice({
   const [hintLevel, setHintLevel] = useState<Record<number, number>>({});
   const [left, setLeft] = useState(0);
   const [finished, setFinished] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedSessionId, setSavedSessionId] = useState<string | null>(null);
   const startedAt = useRef(0);
   const [elapsed, setElapsed] = useState(0);
+  const savingRef = useRef(false);
 
+  // Timer + auto-submit saat exam mode habis waktu
   useEffect(() => {
     if (!questions || finished) return;
     const t = setInterval(() => {
@@ -79,7 +92,8 @@ export function StemPractice({
       if (exam) {
         setLeft((v) => {
           if (v <= 1) {
-            setFinished(true);
+            // Trigger kumpulkan otomatis
+            void submitSession(true);
             return 0;
           }
           return v - 1;
@@ -87,6 +101,7 @@ export function StemPractice({
       }
     }, 1000);
     return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questions, finished, exam]);
 
   const score = useMemo(() => {
@@ -120,6 +135,7 @@ export function StemPractice({
       setRevealed({});
       setHintLevel({});
       setFinished(false);
+      setSavedSessionId(null);
       setLeft(minutes * 60);
       startedAt.current = Date.now();
       setElapsed(0);
@@ -131,9 +147,79 @@ export function StemPractice({
     }
   };
 
+  /**
+   * Persist sesi ke DB.
+   * Dipanggil otomatis saat waktu habis (exam) atau manual lewat "Kumpulkan".
+   */
+  const submitSession = useCallback(
+    async (auto = false) => {
+      if (!questions || savingRef.current) return;
+      savingRef.current = true;
+      setSaving(true);
+      try {
+        const correctCount = questions.reduce(
+          (n, q, i) => n + (isCorrect(q, answers[i] ?? "") ? 1 : 0),
+          0,
+        );
+        const durationSec = Math.max(1, Math.floor((Date.now() - startedAt.current) / 1000));
+
+        const session = await createStemSession({
+          subject,
+          difficulty,
+          mode: exam ? "exam" : "relaxed",
+          topic: (ownTopic.trim() || topic || "").trim() || null,
+          time_limit_sec: exam ? minutes * 60 : null,
+          total_questions: questions.length,
+        });
+
+        await insertStemQuestions(
+          questions.map((q, i) => ({
+            session_id: session.id,
+            ord: i + 1,
+            question_text: q.question,
+            type: q.type,
+            options: q.options,
+            correct_answer: q.answer,
+            user_answer: answers[i] ?? null,
+            is_correct: answers[i] ? isCorrect(q, answers[i]) : null,
+            hints: q.hints,
+            solution: q.solution,
+            topic: q.topic,
+          })),
+        );
+
+        await finishStemSession({
+          sessionId: session.id,
+          correctCount,
+          totalQuestions: questions.length,
+          durationSec,
+        });
+
+        setSavedSessionId(session.id);
+        setFinished(true);
+        if (auto) {
+          toast.info("Waktu habis — sesi otomatis dikumpulkan");
+        } else {
+          toast.success("Sesi tersimpan");
+        }
+      } catch (e) {
+        toast.error("Gagal menyimpan sesi", {
+          description: e instanceof Error ? e.message : undefined,
+        });
+        // Tetap tampilkan layar hasil walau persist gagal — user tetap bisa review.
+        setFinished(true);
+      } finally {
+        savingRef.current = false;
+        setSaving(false);
+      }
+    },
+    [questions, answers, subject, difficulty, exam, topic, ownTopic, minutes],
+  );
+
   const mmss = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
+  // ---------- CONFIG SCREEN ----------
   if (!questions) {
     return (
       <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
@@ -187,7 +273,9 @@ export function StemPractice({
             onClick={() => setExam(false)}
             aria-pressed={!exam}
             className={`rounded-lg border px-3 py-2 text-xs font-medium ${
-              !exam ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-accent"
+              !exam
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border hover:bg-accent"
             }`}
           >
             Mode Santai (ada petunjuk)
@@ -197,7 +285,9 @@ export function StemPractice({
             onClick={() => setExam(true)}
             aria-pressed={exam}
             className={`rounded-lg border px-3 py-2 text-xs font-medium ${
-              exam ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-accent"
+              exam
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border hover:bg-accent"
             }`}
           >
             Mode Ujian (berwaktu)
@@ -234,7 +324,9 @@ export function StemPractice({
     );
   }
 
+  // ---------- RESULT SCREEN ----------
   if (finished) {
+    const pct = Math.round((score / questions.length) * 100);
     return (
       <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
         <div className="text-center py-4">
@@ -243,8 +335,28 @@ export function StemPractice({
             {score}/{questions.length}
           </div>
           <div className="text-sm text-muted-foreground mt-1">
-            Skor {Math.round((score / questions.length) * 100)} · waktu {mmss(elapsed)}
+            Skor {pct} · waktu {mmss(elapsed)}
           </div>
+          {saving && (
+            <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="w-3 h-3 animate-spin" /> Menyimpan…
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="secondary" className="flex-1 gap-1.5">
+            <Link to="/stem/analytics">
+              <BarChart3 className="w-4 h-4" /> Lihat Analitik
+            </Link>
+          </Button>
+          <Button
+            variant="secondary"
+            className="flex-1 gap-1.5"
+            onClick={() => setQuestions(null)}
+          >
+            <RotateCcw className="w-4 h-4" /> Latihan lagi
+          </Button>
         </div>
 
         <div className="space-y-3">
@@ -271,14 +383,11 @@ export function StemPractice({
             );
           })}
         </div>
-
-        <Button variant="secondary" className="w-full gap-1.5" onClick={() => setQuestions(null)}>
-          <RotateCcw className="w-4 h-4" /> Latihan lagi
-        </Button>
       </div>
     );
   }
 
+  // ---------- LIVE SCREEN ----------
   const q = questions[idx]!;
   const given = answers[idx] ?? "";
   const hints = q.hints ?? [];
@@ -300,9 +409,10 @@ export function StemPractice({
             size="sm"
             variant="secondary"
             className="h-7 text-xs"
-            onClick={() => setFinished(true)}
+            onClick={() => void submitSession(false)}
+            disabled={saving}
           >
-            Selesai
+            {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : "Selesai"}
           </Button>
         </div>
       </div>
@@ -403,8 +513,18 @@ export function StemPractice({
           <ChevronLeft className="w-4 h-4" /> Sebelumnya
         </Button>
         {idx === questions.length - 1 ? (
-          <Button className="flex-1" onClick={() => setFinished(true)}>
-            Kumpulkan
+          <Button
+            className="flex-1"
+            onClick={() => void submitSession(false)}
+            disabled={saving}
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin mr-1" /> Menyimpan…
+              </>
+            ) : (
+              "Kumpulkan"
+            )}
           </Button>
         ) : (
           <Button className="flex-1 gap-1" onClick={() => setIdx((i) => i + 1)}>

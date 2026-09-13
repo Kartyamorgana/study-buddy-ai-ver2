@@ -9,18 +9,20 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedStemRouteImport } from './routes/_authenticated/stem'
+import { Route as AuthenticatedStemIndexRouteImport } from './routes/_authenticated/stem.index'
+import { Route as AuthenticatedStemAnalyticsRouteImport } from './routes/_authenticated/stem.analytics'
 
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
-  id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedIndexRoute = AuthenticatedIndexRouteImport.update({
@@ -33,35 +35,53 @@ const AuthenticatedStemRoute = AuthenticatedStemRouteImport.update({
   path: '/stem',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedStemIndexRoute = AuthenticatedStemIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedStemRoute,
+} as any)
+const AuthenticatedStemAnalyticsRoute =
+  AuthenticatedStemAnalyticsRouteImport.update({
+    id: '/analytics',
+    path: '/analytics',
+    getParentRoute: () => AuthenticatedStemRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/auth': typeof AuthRoute
-  '/stem': typeof AuthenticatedStemRoute
+  '/stem': typeof AuthenticatedStemRouteWithChildren
+  '/stem/analytics': typeof AuthenticatedStemAnalyticsRoute
+  '/stem/': typeof AuthenticatedStemIndexRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
-  '/stem': typeof AuthenticatedStemRoute
   '/': typeof AuthenticatedIndexRoute
+  '/stem/analytics': typeof AuthenticatedStemAnalyticsRoute
+  '/stem': typeof AuthenticatedStemIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
-  '/_authenticated/stem': typeof AuthenticatedStemRoute
+  '/_authenticated/stem': typeof AuthenticatedStemRouteWithChildren
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/stem/analytics': typeof AuthenticatedStemAnalyticsRoute
+  '/_authenticated/stem/': typeof AuthenticatedStemIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/stem'
+  fullPaths: '/' | '/auth' | '/stem' | '/stem/analytics' | '/stem/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/auth' | '/stem' | '/'
+  to: '/auth' | '/' | '/stem/analytics' | '/stem'
   id:
     | '__root__'
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/stem'
     | '/_authenticated/'
+    | '/_authenticated/stem/analytics'
+    | '/_authenticated/stem/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -71,18 +91,18 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/auth': {
-      id: '/auth'
-      path: '/auth'
-      fullPath: '/auth'
-      preLoaderRoute: typeof AuthRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_authenticated': {
       id: '/_authenticated'
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/': {
@@ -99,16 +119,43 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedStemRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/stem/': {
+      id: '/_authenticated/stem/'
+      path: '/'
+      fullPath: '/stem/'
+      preLoaderRoute: typeof AuthenticatedStemIndexRouteImport
+      parentRoute: typeof AuthenticatedStemRoute
+    }
+    '/_authenticated/stem/analytics': {
+      id: '/_authenticated/stem/analytics'
+      path: '/analytics'
+      fullPath: '/stem/analytics'
+      preLoaderRoute: typeof AuthenticatedStemAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedStemRoute
+    }
   }
 }
 
+interface AuthenticatedStemRouteChildren {
+  AuthenticatedStemAnalyticsRoute: typeof AuthenticatedStemAnalyticsRoute
+  AuthenticatedStemIndexRoute: typeof AuthenticatedStemIndexRoute
+}
+
+const AuthenticatedStemRouteChildren: AuthenticatedStemRouteChildren = {
+  AuthenticatedStemAnalyticsRoute: AuthenticatedStemAnalyticsRoute,
+  AuthenticatedStemIndexRoute: AuthenticatedStemIndexRoute,
+}
+
+const AuthenticatedStemRouteWithChildren =
+  AuthenticatedStemRoute._addFileChildren(AuthenticatedStemRouteChildren)
+
 interface AuthenticatedRouteRouteChildren {
-  AuthenticatedStemRoute: typeof AuthenticatedStemRoute
+  AuthenticatedStemRoute: typeof AuthenticatedStemRouteWithChildren
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
-  AuthenticatedStemRoute: AuthenticatedStemRoute,
+  AuthenticatedStemRoute: AuthenticatedStemRouteWithChildren,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
 

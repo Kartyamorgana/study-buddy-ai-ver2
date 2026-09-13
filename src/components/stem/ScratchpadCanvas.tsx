@@ -1,15 +1,20 @@
+// src/components/stem/ScratchpadCanvas.tsx
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Eraser, Pencil, Trash2 } from "lucide-react";
+import { Eraser, Pencil, Redo2, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type Tool = "pen" | "eraser";
 
 const PALETTE = ["#1d4ed8", "#dc2626", "#059669", "#111827", "#f59e0b"];
+const MAX_HISTORY = 30;
 
 /**
- * Canvas coret-coret sederhana (pointer events + DPR-aware).
+ * Canvas coret-coret sederhana (pointer events + DPR-aware + undo/redo).
  * Tidak menyimpan state ke server — murni untuk menghitung di layar.
+ *
+ * Undo/Redo: menyimpan snapshot `ImageData` sebelum tiap goresan.
+ * Riwayat direset saat canvas di-resize (karena dimensi pixel berubah).
  */
 export function ScratchpadCanvas({
   className,
@@ -22,9 +27,19 @@ export function ScratchpadCanvas({
   const wrapRef = useRef<HTMLDivElement>(null);
   const drawing = useRef(false);
   const last = useRef<{ x: number; y: number } | null>(null);
+  const history = useRef<ImageData[]>([]);
+  const future = useRef<ImageData[]>([]);
+
   const [tool, setTool] = useState<Tool>("pen");
   const [color, setColor] = useState(PALETTE[0]!);
   const [width, setWidth] = useState(2.5);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+
+  const syncFlags = useCallback(() => {
+    setCanUndo(history.current.length > 0);
+    setCanRedo(future.current.length > 0);
+  }, []);
 
   const setupCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -41,7 +56,11 @@ export function ScratchpadCanvas({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-  }, [height]);
+    // Resize mengganti isi buffer → riwayat tidak valid lagi
+    history.current = [];
+    future.current = [];
+    syncFlags();
+  }, [height, syncFlags]);
 
   useEffect(() => {
     setupCanvas();
@@ -49,6 +68,75 @@ export function ScratchpadCanvas({
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [setupCanvas]);
+
+  // Snapshot sebelum goresan baru, agar bisa di-undo.
+  const snapshot = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    try {
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      history.current.push(img);
+      if (history.current.length > MAX_HISTORY) history.current.shift();
+      future.current = []; // goresan baru membatalkan redo
+      syncFlags();
+    } catch {
+      /* getImageData bisa gagal di canvas tainted — abaikan */
+    }
+  }, [syncFlags]);
+
+  const undo = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx || history.current.length === 0) return;
+    try {
+      const current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      future.current.push(current);
+    } catch {
+      /* ignore */
+    }
+    const prev = history.current.pop()!;
+    ctx.putImageData(prev, 0, 0);
+    syncFlags();
+  }, [syncFlags]);
+
+  const redo = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx || future.current.length === 0) return;
+    try {
+      const current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      history.current.push(current);
+      if (history.current.length > MAX_HISTORY) history.current.shift();
+    } catch {
+      /* ignore */
+    }
+    const next = future.current.pop()!;
+    ctx.putImageData(next, 0, 0);
+    syncFlags();
+  }, [syncFlags]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const target = e.target as HTMLElement | null;
+      // Jangan intercept kalau user sedang mengetik di input/textarea lain
+      if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return;
+      if (e.key.toLowerCase() === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (
+        e.key.toLowerCase() === "y" ||
+        (e.key.toLowerCase() === "z" && e.shiftKey)
+      ) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   const localPos = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -58,6 +146,7 @@ export function ScratchpadCanvas({
   const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    snapshot(); // simpan state sebelum goresan ini
     drawing.current = true;
     last.current = localPos(e);
   };
@@ -86,6 +175,7 @@ export function ScratchpadCanvas({
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
+    snapshot(); // clear juga bisa di-undo
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   };
 
@@ -140,7 +230,33 @@ export function ScratchpadCanvas({
           className="w-20 ml-auto"
           aria-label="Ketebalan pena"
         />
-        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={clear}>
+
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs gap-1"
+          onClick={undo}
+          disabled={!canUndo}
+          title="Undo (Ctrl+Z)"
+        >
+          <Undo2 className="w-3.5 h-3.5" /> Undo
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs gap-1"
+          onClick={redo}
+          disabled={!canRedo}
+          title="Redo (Ctrl+Shift+Z)"
+        >
+          <Redo2 className="w-3.5 h-3.5" /> Redo
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs gap-1"
+          onClick={clear}
+        >
           <Trash2 className="w-3.5 h-3.5" /> Bersihkan
         </Button>
       </div>

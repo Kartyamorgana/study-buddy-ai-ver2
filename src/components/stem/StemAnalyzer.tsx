@@ -1,13 +1,20 @@
-import { useState } from "react";
+// src/components/stem/StemAnalyzer.tsx
+import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Loader2, Upload, Wand2, X, Copy, Check } from "lucide-react";
+import { Loader2, Upload, Wand2, X, Copy, Check, FileCheck2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { MarkdownPreview } from "@/components/studynotes/MarkdownPreview";
-import { analyzeStemMaterial, SUBJECTS, type SubjectId, type StemAnalysis } from "@/lib/stem.functions";
+import {
+  analyzeStemMaterial,
+  SUBJECTS,
+  type SubjectId,
+  type StemAnalysis,
+} from "@/lib/stem.functions";
+import type { StemSource } from "./StemSourceSelector";
 
 const MAX_FILE = 100 * 1024 * 1024;
 
@@ -45,7 +52,9 @@ function CheatCard({ item }: { item: { name: string; latex: string; when: string
       <div className="mt-1 overflow-x-auto text-base">
         <MarkdownPreview source={`$$${item.latex}$$`} />
       </div>
-      {item.when ? <div className="mt-1 text-xs text-muted-foreground">{item.when}</div> : null}
+      {item.when ? (
+        <div className="mt-1 text-xs text-muted-foreground">{item.when}</div>
+      ) : null}
     </div>
   );
 }
@@ -55,11 +64,13 @@ export function StemAnalyzer({
   onSubjectChange,
   onResult,
   onSaveNote,
+  initialSource,
 }: {
   subject: SubjectId;
   onSubjectChange: (s: SubjectId) => void;
   onResult: (a: StemAnalysis) => void;
   onSaveNote: (title: string, markdown: string) => void;
+  initialSource?: StemSource | null;
 }) {
   const analyze = useServerFn(analyzeStemMaterial);
   const [topic, setTopic] = useState("");
@@ -68,8 +79,29 @@ export function StemAnalyzer({
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<StemAnalysis | null>(null);
 
+  // Sinkronkan source yang dipilih user → isi input.
+  useEffect(() => {
+    if (!initialSource) return;
+    if (initialSource.type === "topic") {
+      setTopic(initialSource.topic);
+      setMaterial("");
+      setFile(null);
+    } else if (initialSource.type === "notes") {
+      setTopic(initialSource.topic);
+      setMaterial(initialSource.material);
+      setFile(null);
+    } else if (initialSource.type === "file") {
+      // File dari source selector: base64 langsung dipakai saat analisis.
+      setTopic("");
+      setMaterial("");
+      setFile(null);
+    }
+  }, [initialSource]);
+
   const run = async () => {
-    if (!topic.trim() && !material.trim() && !file) {
+    const fromSourceFile = initialSource?.type === "file" ? initialSource : null;
+
+    if (!topic.trim() && !material.trim() && !file && !fromSourceFile) {
       toast.error("Isi topik, tempel materi, atau unggah file dulu");
       return;
     }
@@ -77,17 +109,25 @@ export function StemAnalyzer({
     try {
       let fileBase64: string | undefined;
       let fileMime: string | undefined;
-      if (file) {
+      let filename: string | undefined;
+
+      if (fromSourceFile) {
+        fileBase64 = fromSourceFile.base64;
+        fileMime = fromSourceFile.mime;
+        filename = fromSourceFile.filename;
+      } else if (file) {
         if (file.size > MAX_FILE) throw new Error("Ukuran file maksimal 100 MB");
         fileBase64 = await toBase64(file);
         fileMime = file.type || "application/pdf";
+        filename = file.name;
       }
+
       const res = await analyze({
         data: {
           subject,
           topic: topic.trim() || undefined,
           material: material.trim() || undefined,
-          filename: file?.name,
+          filename,
           fileBase64,
           fileMime,
         },
@@ -109,7 +149,9 @@ export function StemAnalyzer({
       a.concepts && `## 🧠 Konsep\n\n${a.concepts}`,
       a.formulas && `## 📐 Rumus\n\n${a.formulas}`,
       a.cheatsheet.length &&
-        `## ⚡ Cheat Sheet\n\n${a.cheatsheet.map((c) => `- **${c.name}** — $${c.latex}$${c.when ? ` — ${c.when}` : ""}`).join("\n")}`,
+        `## ⚡ Cheat Sheet\n\n${a.cheatsheet
+          .map((c) => `- **${c.name}** — $${c.latex}$${c.when ? ` — ${c.when}` : ""}`)
+          .join("\n")}`,
       a.pitfalls && `## ⚠️ Kesalahan Umum\n\n${a.pitfalls}`,
     ]
       .filter(Boolean)
@@ -139,6 +181,15 @@ export function StemAnalyzer({
           </div>
         </div>
 
+        {initialSource?.type === "file" && (
+          <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+            <FileCheck2 className="w-3.5 h-3.5 text-primary shrink-0" />
+            <span className="truncate">
+              Menggunakan file dari Sumber Materi: <b>{initialSource.filename}</b>
+            </span>
+          </div>
+        )}
+
         <Input
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
@@ -149,33 +200,40 @@ export function StemAnalyzer({
           value={material}
           onChange={(e) => setMaterial(e.target.value)}
           placeholder="Tempel materi/teks di sini (opsional)"
-          className="min-h-[96px] font-mono text-xs"
+          className="min-h-24 font-mono text-xs"
         />
 
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-xs cursor-pointer hover:bg-accent">
-            <Upload className="w-3.5 h-3.5" />
-            {file ? "Ganti file" : "Unggah PDF / gambar / teks"}
-            <input
-              type="file"
-              className="hidden"
-              accept=".pdf,.txt,.md,image/*"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
-          </label>
-          {file && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs">
-              {file.name}
-              <button type="button" onClick={() => setFile(null)} aria-label="Hapus file">
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          )}
-          <Button onClick={run} disabled={busy} className="ml-auto gap-1.5">
-            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-            {busy ? "Menganalisis…" : "Analisis materi"}
-          </Button>
-        </div>
+        {initialSource?.type !== "file" && (
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-xs cursor-pointer hover:bg-accent">
+              <Upload className="w-3.5 h-3.5" />
+              {file ? "Ganti file" : "Unggah PDF / gambar / teks"}
+              <input
+                type="file"
+                className="hidden"
+                accept=".pdf,.txt,.md,image/*"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+            </label>
+            {file && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs">
+                {file.name}
+                <button
+                  type="button"
+                  onClick={() => setFile(null)}
+                  aria-label="Hapus file"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+          </div>
+        )}
+
+        <Button onClick={run} disabled={busy} className="w-full gap-1.5">
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+          {busy ? "Menganalisis…" : "Analisis materi"}
+        </Button>
       </div>
 
       {result && (
@@ -201,10 +259,18 @@ export function StemAnalyzer({
 
           <Tabs defaultValue="overview">
             <TabsList className="flex-wrap h-auto">
-              <TabsTrigger value="overview" className="text-xs">Gambaran</TabsTrigger>
-              <TabsTrigger value="concepts" className="text-xs">Konsep</TabsTrigger>
-              <TabsTrigger value="formulas" className="text-xs">Rumus</TabsTrigger>
-              <TabsTrigger value="pitfalls" className="text-xs">Jebakan</TabsTrigger>
+              <TabsTrigger value="overview" className="text-xs">
+                Gambaran
+              </TabsTrigger>
+              <TabsTrigger value="concepts" className="text-xs">
+                Konsep
+              </TabsTrigger>
+              <TabsTrigger value="formulas" className="text-xs">
+                Rumus
+              </TabsTrigger>
+              <TabsTrigger value="pitfalls" className="text-xs">
+                Jebakan
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="overview">
               <MarkdownPreview source={result.overview || "_Belum ada._"} />

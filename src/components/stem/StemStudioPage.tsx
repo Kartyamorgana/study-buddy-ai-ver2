@@ -1,8 +1,20 @@
+// src/components/stem/StemStudioPage.tsx
 import { useCallback, useState } from "react";
-import { FlaskConical, Moon, Notebook, Sparkles, Sun, Trophy } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import {
+  BarChart3,
+  FlaskConical,
+  Moon,
+  Notebook,
+  Sparkles,
+  Sun,
+  Trophy,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { useTheme } from "@/hooks/use-theme";
 import { createNote, updateNote } from "@/lib/db";
 import { SignOutButton } from "@/components/studynotes/SignOutButton";
@@ -10,6 +22,7 @@ import { StemTopNav } from "./StemTopNav";
 import { StemAnalyzer } from "./StemAnalyzer";
 import { StemPractice } from "./StemPractice";
 import { StemCheatSheet } from "./StemCheatSheet";
+import { StemSourceSelector, type StemSource } from "./StemSourceSelector";
 import type { StemAnalysis, SubjectId } from "@/lib/stem.functions";
 
 type StemTab = "analyzer" | "cheatsheet" | "practice";
@@ -19,13 +32,33 @@ export function StemStudioPage() {
   const [subject, setSubject] = useState<SubjectId>("matematika");
   const [analysis, setAnalysis] = useState<StemAnalysis | null>(null);
   const [tab, setTab] = useState<StemTab>("analyzer");
+  const [source, setSource] = useState<StemSource | null>(null);
 
-  // Materi acuan (dipakai Cheat Sheet & Practice)
-  const material = analysis
+  // Materi acuan (dipakai Cheat Sheet & Practice):
+  // - Prioritas: hasil analisis AI (paling kaya konteks)
+  // - Fallback: sumber yang dipilih user (Notes / File / Topic)
+  const derivedFromAnalysis = analysis
     ? [analysis.overview, analysis.concepts, analysis.formulas, analysis.pitfalls]
         .filter((s) => s && s.trim().length > 0)
         .join("\n\n")
     : undefined;
+
+  const fallbackTopic =
+    source?.type === "notes"
+      ? source.topic
+      : source?.type === "topic"
+        ? source.topic
+        : undefined;
+
+  const fallbackMaterial =
+    source?.type === "notes"
+      ? source.material
+      : source?.type === "file" && source.material
+        ? source.material
+        : undefined;
+
+  const finalTopic = analysis?.title ?? fallbackTopic;
+  const finalMaterial = derivedFromAnalysis ?? fallbackMaterial;
 
   const saveAsNote = useCallback(async (title: string, markdown: string) => {
     try {
@@ -56,6 +89,19 @@ export function StemStudioPage() {
 
         <StemTopNav className="ml-auto" />
 
+        <Button
+          asChild
+          size="sm"
+          variant="ghost"
+          className="h-8 gap-1"
+          title="Analitik & pelacak kelemahan"
+        >
+          <Link to="/stem/analytics">
+            <BarChart3 className="w-4 h-4" />
+            <span className="hidden sm:inline text-xs">Analitik</span>
+          </Link>
+        </Button>
+
         <button
           type="button"
           onClick={toggle}
@@ -69,7 +115,32 @@ export function StemStudioPage() {
       </header>
 
       <main className="flex-1 min-h-0 overflow-y-auto">
-        <div className="mx-auto max-w-5xl w-full p-3 sm:p-5">
+        <div className="mx-auto max-w-5xl w-full p-3 sm:p-5 space-y-4">
+          <StemSourceSelector onSelect={setSource} current={source} />
+
+          {source && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+              <span>
+                Sumber aktif:{" "}
+                <b className="text-foreground">
+                  {source.type === "notes"
+                    ? `Catatan · ${source.topic}`
+                    : source.type === "file"
+                      ? `File · ${source.filename}`
+                      : `Topik · ${source.topic}`}
+                </b>
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 text-[11px] gap-1"
+                onClick={() => setSource(null)}
+              >
+                <X className="w-3 h-3" /> Hapus sumber
+              </Button>
+            </div>
+          )}
+
           <Tabs value={tab} onValueChange={(v) => setTab(v as StemTab)}>
             <TabsList className="w-full sm:w-auto">
               <TabsTrigger value="analyzer" className="gap-1.5 text-xs sm:text-sm">
@@ -92,14 +163,15 @@ export function StemStudioPage() {
                   setTab("cheatsheet");
                 }}
                 onSaveNote={saveAsNote}
+                initialSource={source}
               />
             </TabsContent>
 
             <TabsContent value="cheatsheet" className="mt-4">
               <StemCheatSheet
                 subject={subject}
-                topic={analysis?.title}
-                material={material}
+                topic={finalTopic}
+                material={finalMaterial}
                 onSaveNote={saveAsNote}
               />
             </TabsContent>
@@ -107,8 +179,8 @@ export function StemStudioPage() {
             <TabsContent value="practice" className="mt-4">
               <StemPractice
                 subject={subject}
-                topic={analysis?.title}
-                material={material}
+                topic={finalTopic}
+                material={finalMaterial}
               />
             </TabsContent>
           </Tabs>

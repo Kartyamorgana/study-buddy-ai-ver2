@@ -1,22 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { StemStudioPage } from "@/components/stem/StemStudioPage";
+// src/routes/_authenticated/stem.tsx
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 
+/**
+ * Layout minimal untuk area /stem.
+ * Konten studio ada di `stem.index.tsx` (path "/stem"),
+ * analytics di `stem.analytics.tsx` (path "/stem/analytics").
+ */
 export const Route = createFileRoute("/_authenticated/stem")({
   ssr: false,
-  head: () => ({
-    meta: [
-      { title: "STEM & SNBT Prep Studio" },
-      {
-        name: "description",
-        content:
-          "Analisis materi, generator soal, dan latihan interaktif untuk Matematika, Fisika, Logika, dan persiapan UTBK SNBT.",
-      },
-      { property: "og:title", content: "STEM & SNBT Prep Studio" },
-      {
-        property: "og:description",
-        content: "Belajar STEM dan SNBT dengan AI: analisis materi, formula cheat-sheet, dan quiz interaktif.",
-      },
-    ],
-  }),
-  component: StemStudioPage,
+  component: () => <Outlet />,
 });
