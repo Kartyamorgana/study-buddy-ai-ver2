@@ -64,6 +64,7 @@ export function StemStudioPage() {
         >
           {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
+        <SignOutButton />
       </header>
 
       <main className="flex-1 min-h-0 overflow-y-auto">
