@@ -90,9 +90,133 @@ export type Database = {
           },
         ]
       }
+      stem_quiz_questions: {
+        Row: {
+          correct_answer: string
+          created_at: string
+          hints: Json
+          id: string
+          is_correct: boolean | null
+          options: Json
+          ord: number
+          question_text: string
+          session_id: string
+          solution: string
+          time_spent_sec: number
+          topic: string
+          type: string
+          user_answer: string | null
+          user_id: string
+        }
+        Insert: {
+          correct_answer: string
+          created_at?: string
+          hints?: Json
+          id?: string
+          is_correct?: boolean | null
+          options?: Json
+          ord: number
+          question_text: string
+          session_id: string
+          solution?: string
+          time_spent_sec?: number
+          topic?: string
+          type: string
+          user_answer?: string | null
+          user_id?: string
+        }
+        Update: {
+          correct_answer?: string
+          created_at?: string
+          hints?: Json
+          id?: string
+          is_correct?: boolean | null
+          options?: Json
+          ord?: number
+          question_text?: string
+          session_id?: string
+          solution?: string
+          time_spent_sec?: number
+          topic?: string
+          type?: string
+          user_answer?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stem_quiz_questions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "stem_quiz_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stem_quiz_sessions: {
+        Row: {
+          correct_count: number
+          difficulty: string
+          duration_sec: number
+          ended_at: string | null
+          id: string
+          metadata: Json
+          mode: string
+          score: number
+          started_at: string
+          subject: string
+          time_limit_sec: number | null
+          topic: string | null
+          total_questions: number
+          user_id: string
+        }
+        Insert: {
+          correct_count?: number
+          difficulty: string
+          duration_sec?: number
+          ended_at?: string | null
+          id?: string
+          metadata?: Json
+          mode: string
+          score?: number
+          started_at?: string
+          subject: string
+          time_limit_sec?: number | null
+          topic?: string | null
+          total_questions?: number
+          user_id?: string
+        }
+        Update: {
+          correct_count?: number
+          difficulty?: string
+          duration_sec?: number
+          ended_at?: string | null
+          id?: string
+          metadata?: Json
+          mode?: string
+          score?: number
+          started_at?: string
+          subject?: string
+          time_limit_sec?: number | null
+          topic?: string | null
+          total_questions?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      stem_weakness: {
+        Row: {
+          accuracy_pct: number | null
+          attempts: number | null
+          correct: number | null
+          last_seen: string | null
+          subject: string | null
+          topic: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       [_ in never]: never
