@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { StemStudioPage } from "@/components/stem/StemStudioPage";
 
-export const Route = createFileRoute("/stem")({
+export const Route = createFileRoute("/_authenticated/stem")({
   ssr: false,
   head: () => ({
     meta: [
