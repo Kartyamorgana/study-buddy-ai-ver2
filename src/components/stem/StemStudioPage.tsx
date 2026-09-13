@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTheme } from "@/hooks/use-theme";
 import { createNote, updateNote } from "@/lib/db";
+import { SignOutButton } from "@/components/studynotes/SignOutButton";
 import { StemTopNav } from "./StemTopNav";
 import { StemAnalyzer } from "./StemAnalyzer";
 import { StemPractice } from "./StemPractice";
