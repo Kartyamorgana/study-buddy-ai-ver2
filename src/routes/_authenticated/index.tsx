@@ -77,6 +77,7 @@ import { StudyGamePanel } from "@/components/studynotes/StudyGamePanel";
 import { StudyMethodsPanel } from "@/components/studynotes/StudyMethodsPanel";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { StemTopNav } from "@/components/stem/StemTopNav";
+import { SignOutButton } from "@/components/studynotes/SignOutButton";
 
 type View = "edit" | "preview" | "game" | "methods";
 
