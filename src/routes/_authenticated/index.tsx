@@ -80,7 +80,7 @@ import { StemTopNav } from "@/components/stem/StemTopNav";
 
 type View = "edit" | "preview" | "game" | "methods";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/_authenticated/")({
   ssr: false,
   head: () => ({
     meta: [
