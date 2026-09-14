@@ -56,7 +56,7 @@ function CodeBlock({ className, children }: { className?: string; children: Reac
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Callouts                                                                  */
+/*  Callouts (+ DETAILS)                                                      */
 /* -------------------------------------------------------------------------- */
 
 const CALLOUTS = {
@@ -67,30 +67,35 @@ const CALLOUTS = {
   CAUTION: { label: "Awas", icon: Flame, cls: "callout-caution" },
 } as const;
 
-type CalloutKey = keyof typeof CALLOUTS;
+type CalloutKey = keyof typeof CALLOUTS | "DETAILS";
 
-const CALLOUT_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*\n?/i;
+// Regex mendukung `[!TYPE]` dan `[!TYPE] summary` (untuk DETAILS)
+const CALLOUT_RE =
+  /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|DETAILS)\](?:[ \t]+([^\n]+?))?[ \t]*\n?/i;
 
-/**
- * Deteksi marker `[!TYPE]` di awal blockquote TANPA re-render ulang isinya.
- * Mengembalikan { key, children } dengan marker di-strip, atau null jika bukan callout.
- */
-function extractCallout(children: ReactNode): { key: CalloutKey; children: ReactNode } | null {
+type ExtractedCallout = {
+  key: CalloutKey;
+  summary?: string;
+  children: ReactNode;
+};
+
+function extractCallout(children: ReactNode): ExtractedCallout | null {
   const arr = Array.isArray(children) ? children : [children];
   if (arr.length === 0) return null;
   const first = arr[0];
 
-  // Kasus A: anak pertama adalah string mentah
+  // Kasus A: anak pertama string mentah
   if (typeof first === "string") {
     const m = first.match(CALLOUT_RE);
     if (!m) return null;
     const key = m[1]!.toUpperCase() as CalloutKey;
+    const summary = m[2]?.trim();
     const rest = first.slice(m[0].length);
     const remaining = rest.trim() ? [rest, ...arr.slice(1)] : arr.slice(1);
-    return { key, children: remaining.length === 1 ? remaining[0] : remaining };
+    return { key, summary, children: remaining.length === 1 ? remaining[0] : remaining };
   }
 
-  // Kasus B: anak pertama adalah elemen (biasanya <p>)
+  // Kasus B: anak pertama elemen (biasanya <p>)
   if (isValidElement(first)) {
     const el = first as { props?: { children?: ReactNode } };
     const inner = el.props?.children;
@@ -102,19 +107,23 @@ function extractCallout(children: ReactNode): { key: CalloutKey; children: React
     if (!m) return null;
 
     const key = m[1]!.toUpperCase() as CalloutKey;
+    const summary = m[2]?.trim();
     const restText = firstInner.slice(m[0].length);
     const newInnerArr = restText.trim()
       ? [restText, ...innerArr.slice(1)]
       : innerArr.slice(1);
 
-    // cloneElement untuk strip marker — anak-anak lain tetap utuh
     const clonedFirst = cloneElement(
       first as React.ReactElement,
       {},
       ...(newInnerArr as ReactNode[]),
     );
     const newChildren = [clonedFirst, ...arr.slice(1)];
-    return { key, children: newChildren.length === 1 ? newChildren[0] : newChildren };
+    return {
+      key,
+      summary,
+      children: newChildren.length === 1 ? newChildren[0] : newChildren,
+    };
   }
 
   return null;
@@ -123,7 +132,19 @@ function extractCallout(children: ReactNode): { key: CalloutKey; children: React
 function Blockquote({ children }: { children?: ReactNode }) {
   const callout = extractCallout(children);
   if (!callout) return <blockquote>{children}</blockquote>;
-  const meta = CALLOUTS[callout.key];
+
+  // DETAILS dirender sebagai <details> HTML murni, bukan callout visual
+  if (callout.key === "DETAILS") {
+    return (
+      <details>
+        <summary>{callout.summary || "Jawaban"}</summary>
+        <div>{callout.children}</div>
+      </details>
+    );
+  }
+
+  const meta = CALLOUTS[callout.key as keyof typeof CALLOUTS];
+  if (!meta) return <blockquote>{children}</blockquote>;
   const Icon = meta.icon;
   return (
     <div className={`callout ${meta.cls}`}>
@@ -174,82 +195,57 @@ const MATHY =
   /^(frac|dfrac|tfrac|sqrt|sum|prod|int|iint|oint|lim|binom|vec|hat|bar|tilde|overline|underline|overrightarrow|mathrm|mathbf|mathbb|mathcal|operatorname|log|ln|exp|sin|cos|tan|sec|csc|cot|partial|nabla|cdots|ldots|dots|begin|end|left|right|substack|matrix|pmatrix|bmatrix|cases|align|aligned|text)$/;
 
 /* -------------------------------------------------------------------------- */
-/*  normalizeMath                                                             */
+/*  convertDetailsToCallout — inti fix                                        */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Pastikan `<details>...</details>` punya blank line di sekitar kontennya
- * agar markdown di dalam (termasuk rumus $...$) tetap diparsing.
+ * Konversi `<details><summary>S</summary>C</details>` menjadi blockquote
+ * dengan marker `[!DETAILS] S`, agar konten di dalamnya tetap diparsing
+ * sebagai markdown (termasuk rumus $...$ dan $$...$$).
  *
- * Pendekatan: per-line scan untuk handle indentasi (list item) & line ending.
+ * Ini menyelesaikan bug: CommonMark memperlakukan HTML `<details>` sebagai
+ * raw block, sehingga konten di dalamnya TIDAK diparsing sebagai markdown.
  */
-function fixDetailsBlocks(src: string): string {
-  // Normalisasi line ending dulu — AI kadang kirim \r\n (Windows)
-  const normalized = src.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  const lines = normalized.split("\n");
-  const out: string[] = [];
-  let inDetails = false;
-  let indent = "";
+function convertDetailsToCallout(src: string): string {
+  return src.replace(
+    /^[ \t]*<details\b[^>]*>([\s\S]*?)<\/details>[ \t]*$/gim,
+    (_match, inner: string) => {
+      const sm = inner.match(
+        /^\s*<summary\b[^>]*>([\s\S]*?)<\/summary>([\s\S]*)$/i,
+      );
+      const summary = (sm ? sm[1] : "Jawaban").trim();
+      const content = (sm ? sm[2] : inner).trim();
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    // Deteksi awal <details> (mungkin dengan indentasi di dalam list item)
-    const openMatch = line.match(/^([ \t]*)<details\b/i);
-    if (openMatch) {
-      inDetails = true;
-      indent = openMatch[1];
-      out.push(line);
-      continue;
-    }
-
-    if (inDetails) {
-      // Setelah </summary> → pastikan ada blank line sebelum konten berikutnya
-      if (/<\/summary>\s*$/i.test(line)) {
-        out.push(line);
-        const next = lines[i + 1];
-        if (next !== undefined && next.trim() !== "") {
-          out.push(indent); // blank line dengan indentasi yang sama
-        }
-        continue;
-      }
-
-      // Sebelum </details> → pastikan ada blank line sebelum tag penutup
-      if (/^[ \t]*<\/details>/i.test(line)) {
-        const prev = out[out.length - 1];
-        if (prev !== undefined && prev.trim() !== "") {
-          out.push(indent);
-        }
-        out.push(line);
-        inDetails = false;
-        continue;
-      }
-    }
-
-    out.push(line);
-    void trimmed;
-  }
-
-  return out.join("\n");
+      const contentLines = content.split("\n");
+      const quoted = [
+        `> [!DETAILS] ${summary}`,
+        ">",
+        ...contentLines.map((l) => (l.trim() ? `> ${l}` : ">")),
+      ];
+      return `\n${quoted.join("\n")}\n`;
+    },
+  );
 }
+
+/* -------------------------------------------------------------------------- */
+/*  normalizeMath                                                             */
+/* -------------------------------------------------------------------------- */
 
 export function normalizeMath(src: string): string {
   // 0a. Normalisasi line ending
   let out = src.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
-  // 0b. Fix <details> blocks agar markdown di dalamnya diparsing
-  out = fixDetailsBlocks(out);
+  // 0b. Konversi <details> HTML → blockquote marker
+  out = convertDetailsToCallout(out);
 
-  // 1. \[ ... \] -> $$ ... $$ ; \( ... \) -> $ ... $
+  // 1. \[ ... \] → $$ ... $$ ; \( ... \) → $ ... $
   out = out.replace(/\\\[([\s\S]*?)\\\]/g, (_m, inner) => `\n$$\n${String(inner).trim()}\n$$\n`);
   out = out.replace(/\\\(([\s\S]*?)\\\)/g, (_m, inner) => `$${String(inner).trim()}$`);
 
-  // protect(): split pada delimiter math/kode.
   const protect = (s: string) =>
     s.split(/(\$\$[\s\S]*?\$\$|\$[^$]{1,500}?\$|`[^`]*`|```[\s\S]*?```)/g);
 
-  // 2. \begin{env} ... \end{env} di luar math -> blok $$
+  // 2. \begin{env}...\end{env} di luar math → blok $$
   out = protect(out)
     .map((seg, i) =>
       i % 2 === 1
@@ -264,7 +260,7 @@ export function normalizeMath(src: string): string {
     )
     .join("");
 
-  // 3. Perintah bermakna matematika + argumen/sub-superskrip yang lupa dibungkus $
+  // 3. Perintah math tanpa pembatas $
   out = protect(out)
     .map((seg, i) => {
       if (i % 2 === 1) return seg;
@@ -279,7 +275,7 @@ export function normalizeMath(src: string): string {
     })
     .join("");
 
-  // 4. Perintah LaTeX berdiri sendiri di luar math -> simbol unicode
+  // 4. Perintah LaTeX berdiri sendiri → simbol unicode
   return protect(out)
     .map((seg, i) => {
       if (i % 2 === 1) return seg;
