@@ -1,5 +1,5 @@
 // src/components/stem/StemStudioPage.tsx
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   BarChart3,
@@ -24,11 +24,14 @@ import { StemAnalyzer } from "./StemAnalyzer";
 import { StemPractice } from "./StemPractice";
 import { StemCheatSheet } from "./StemCheatSheet";
 import { StemSourceSelector, type StemSource } from "./StemSourceSelector";
-import type { StemAnalysis, SubjectId } from "@/lib/stem.functions";
+import { StemPomodoro } from "./StemPomodoro";
+import { SUBJECTS, type StemAnalysis, type SubjectId } from "@/lib/stem.functions";
 
 type StemTab = "analyzer" | "cheatsheet" | "practice";
 
-const VALID_SUBJECTS: SubjectId[] = ["umum", "kuantitatif", "matematika", "custom"];
+function isSubjectId(x: string | undefined): x is SubjectId {
+  return !!x && SUBJECTS.some((s) => s.id === x);
+}
 
 export function StemStudioPage({
   initialTopic,
@@ -36,21 +39,28 @@ export function StemStudioPage({
 }: {
   initialTopic?: string;
   initialSubject?: string;
-} = {}) {
+}) {
   const { theme, toggle } = useTheme();
-  const [subject, setSubject] = useState<SubjectId>("matematika");
+  const [subject, setSubject] = useState<SubjectId>(
+    isSubjectId(initialSubject) ? initialSubject : "matematika",
+  );
   const [analysis, setAnalysis] = useState<StemAnalysis | null>(null);
   const [tab, setTab] = useState<StemTab>("analyzer");
   const [source, setSource] = useState<StemSource | null>(null);
+  const appliedRef = useRef(false);
 
-  // Auto-fill dari search params (dipakai oleh tombol "Latihan topik ini" di Analytics)
+  // A — Terapkan query param sekali saat mount (dari dashboard Analytics)
   useEffect(() => {
-    if (initialSubject && VALID_SUBJECTS.includes(initialSubject as SubjectId)) {
-      setSubject(initialSubject as SubjectId);
-    }
+    if (appliedRef.current) return;
+    if (!initialTopic && !initialSubject) return;
+    appliedRef.current = true;
+
     if (initialTopic) {
       setSource({ type: "topic", topic: initialTopic });
       setTab("practice");
+      toast.info("Latihan disiapkan dari topik lemah", {
+        description: initialTopic,
+      });
     }
   }, [initialTopic, initialSubject]);
 
@@ -89,7 +99,7 @@ export function StemStudioPage({
 
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-background text-foreground">
-      <header className="h-14 shrink-0 border-b border-border flex items-center gap-3 px-3 sm:px-4 bg-card/50 backdrop-blur">
+      <header className="h-14 shrink-0 border-b border-border flex items-center gap-2 px-3 sm:px-4 bg-card/50 backdrop-blur">
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground grid place-items-center shrink-0">
             <FlaskConical className="w-4 h-4" />
@@ -106,16 +116,20 @@ export function StemStudioPage({
 
         <StemTopNav className="ml-auto" />
 
+        {/* D — Pomodoro */}
+        <StemPomodoro />
+
+        {/* C — Bookmarks */}
         <Button
           asChild
           size="sm"
           variant="ghost"
           className="h-8 gap-1"
-          title="Soal tersimpan"
+          title="Bank Soal Pribadi"
         >
           <Link to="/stem/bookmarks">
             <Bookmark className="w-4 h-4" />
-            <span className="hidden sm:inline text-xs">Bookmark</span>
+            <span className="hidden sm:inline text-xs">Bank Soal</span>
           </Link>
         </Button>
 
