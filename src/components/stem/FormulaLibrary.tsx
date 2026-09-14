@@ -54,13 +54,18 @@ function FormulaCard({ formula }: { formula: Formula }) {
         <MarkdownPreview source={`$$${formula.latex}$$`} />
       </div>
 
-      <div className="mt-2 text-xs text-muted-foreground leading-relaxed">
-        {formula.description}
+            <div className={cn("mt-2 text-xs text-muted-foreground leading-relaxed", INLINE_MD)}>
+        <MarkdownPreview source={formula.description} />
       </div>
 
       {formula.tips && (
-        <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 text-[11px] text-amber-800 dark:text-amber-200 leading-snug">
-          💡 {formula.tips}
+        <div
+          className={cn(
+            "mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 text-[11px] text-amber-800 dark:text-amber-200 leading-snug",
+            INLINE_MD,
+          )}
+        >
+          <MarkdownPreview source={`💡 ${formula.tips}`} />
         </div>
       )}
 

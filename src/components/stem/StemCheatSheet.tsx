@@ -1,3 +1,4 @@
+// src/components/stem/StemCheatSheet.tsx
 import { useCallback, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
@@ -24,9 +25,8 @@ import {
 } from "@/lib/stem.functions";
 
 /**
- * Utilitas: matikan margin atas/bawah paragraf pertama & terakhir di dalam
- * MarkdownPreview, supaya bisa disisipkan inline tanpa bikin layout berantakan.
- * `[&_.prose-note>*:first-child]` → `.parent .prose-note > *:first-child`.
+ * Reset margin paragraf pertama & terakhir `prose-note`
+ * agar MarkdownPreview bisa disisipkan inline tanpa merusak layout.
  */
 const INLINE_MD =
   "[&_.prose-note>*:first-child]:mt-0 [&_.prose-note>*:last-child]:mb-0";
@@ -37,7 +37,7 @@ function CopyFormulaButton({ latex }: { latex: string }) {
     <button
       type="button"
       aria-label="Salin rumus"
-      className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+      className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
       onClick={() => {
         navigator.clipboard.writeText(`$${latex}$`);
         setCopied(true);
@@ -49,18 +49,13 @@ function CopyFormulaButton({ latex }: { latex: string }) {
   );
 }
 
-/** Satu baris glosarium: istilah (kiri) + arti (kanan) dengan layout grid yang rapi. */
 function GlossaryItem({ term, meaning }: { term: string; meaning: string }) {
   return (
     <div className="py-2 border-b border-border/50 last:border-0">
-      <dt
-        className={`text-[13px] font-semibold text-foreground leading-snug ${INLINE_MD}`}
-      >
+      <dt className={`text-[13px] font-semibold text-foreground leading-snug ${INLINE_MD}`}>
         <MarkdownPreview source={term} />
       </dt>
-      <dd
-        className={`mt-0.5 text-xs text-muted-foreground leading-snug ${INLINE_MD}`}
-      >
+      <dd className={`mt-0.5 text-xs text-muted-foreground leading-snug ${INLINE_MD}`}>
         <MarkdownPreview source={meaning} />
       </dd>
     </div>
@@ -140,7 +135,7 @@ export function StemCheatSheet({
     toast.success("Markdown disalin");
   }, [result]);
 
-  // --- Form ---
+  /* ------------------------------- FORM ----------------------------------- */
   if (!result) {
     return (
       <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
@@ -178,10 +173,10 @@ export function StemCheatSheet({
     );
   }
 
-  // --- Hasil ---
+  /* ------------------------------- HASIL ---------------------------------- */
   return (
     <div className="space-y-4">
-      {/* Header + stats */}
+      {/* Header */}
       <div className="rounded-2xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -229,7 +224,6 @@ export function StemCheatSheet({
           </div>
         </div>
 
-        {/* Search */}
         <div className="relative mt-3">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <Input
@@ -249,74 +243,88 @@ export function StemCheatSheet({
           </div>
         )}
 
-        {filtered.map((s, i) => (
-          <section
-            key={`${s.heading}-${i}`}
-            className="rounded-2xl border border-border bg-card overflow-hidden"
-          >
-            <div className="border-l-4 border-primary bg-muted/40 px-4 py-2.5">
-              <h3 className="font-semibold text-[15px] tracking-tight">{s.heading}</h3>
-            </div>
+        {filtered.map((s, i) => {
+          const oddCount = s.formulas.length % 2 === 1;
+          const lastIndex = s.formulas.length - 1;
 
-            <div className="p-4 space-y-3">
-              {s.brief && (
-                <div className={`text-sm text-foreground/90 ${INLINE_MD}`}>
-                  <MarkdownPreview source={s.brief} />
-                </div>
-              )}
+          return (
+            <section
+              key={`${s.heading}-${i}`}
+              className="rounded-2xl border border-border bg-card overflow-hidden"
+            >
+              <div className="border-l-4 border-primary bg-muted/40 px-4 py-2.5">
+                <h3 className="font-semibold text-[15px] tracking-tight">{s.heading}</h3>
+              </div>
 
-              {s.formulas.length > 0 && (
-                <div>
-                  <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                    Rumus
+              <div className="p-4 space-y-3">
+                {s.brief && (
+                  <div className={`text-sm text-foreground/90 ${INLINE_MD}`}>
+                    <MarkdownPreview source={s.brief} />
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {s.formulas.map((f, j) => (
-                      <div
-                        key={j}
-                        className="group rounded-xl border border-border bg-background p-2.5 transition-colors hover:border-primary/50"
-                      >
-                        <div className="flex items-start justify-between gap-2">
+                )}
+
+                {s.formulas.length > 0 && (
+                  <div>
+                    <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                      Rumus
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {s.formulas.map((f, j) => {
+                        // Formula terakhir di baris ganjil → span 2 kolom agar layout rata
+                        const spanFull = oddCount && j === lastIndex;
+                        return (
                           <div
-                            className={`min-w-0 overflow-x-auto text-[15px] flex-1 ${INLINE_MD}`}
+                            key={j}
+                            className={`group flex flex-col rounded-xl border border-border bg-muted/30 p-3 transition-colors hover:border-primary/50 ${
+                              spanFull ? "sm:col-span-2" : ""
+                            }`}
                           >
-                            <MarkdownPreview source={`$$${f.latex}$$`} />
+                            <div className="flex items-start gap-2">
+                              <div
+                                className={`min-w-0 flex-1 overflow-x-auto text-[15px] leading-tight ${INLINE_MD}`}
+                              >
+                                <MarkdownPreview source={`$$${f.latex}$$`} />
+                              </div>
+                              <CopyFormulaButton latex={f.latex} />
+                            </div>
+                            {f.label && (
+                              <div
+                                className={`mt-2 text-[11px] text-muted-foreground leading-snug border-t border-border/60 pt-1.5 ${INLINE_MD}`}
+                              >
+                                {/* FIX: render Markdown agar $...$ di label ikut di-render */}
+                                <MarkdownPreview source={f.label} />
+                              </div>
+                            )}
                           </div>
-                          <CopyFormulaButton latex={f.latex} />
-                        </div>
-                        {f.label && (
-                          <div className="mt-1 text-[11px] text-muted-foreground leading-snug">
-                            {f.label}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {s.tips.length > 0 && (
-                <div>
-                  <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-                    Tips &amp; Jebakan
+                {s.tips.length > 0 && (
+                  <div>
+                    <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+                      Tips &amp; Jebakan
+                    </div>
+                    <ul className="space-y-1.5 text-sm leading-relaxed">
+                      {s.tips.map((t, j) => (
+                        <li key={j} className="grid grid-cols-[auto_1fr] gap-2 leading-relaxed">
+                          <span className="text-primary select-none" aria-hidden="true">
+                            •
+                          </span>
+                          <div className={`min-w-0 ${INLINE_MD}`}>
+                            <MarkdownPreview source={t} />
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <ul className="space-y-1.5 text-sm leading-relaxed">
-                    {s.tips.map((t, j) => (
-                      <li key={j} className="grid grid-cols-[auto_1fr] gap-2 leading-relaxed">
-                        <span className="text-primary select-none" aria-hidden="true">
-                          •
-                        </span>
-                        <div className={`min-w-0 ${INLINE_MD}`}>
-                          <MarkdownPreview source={t} />
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </section>
-        ))}
+                )}
+              </div>
+            </section>
+          );
+        })}
       </div>
 
       {/* Glosarium */}
