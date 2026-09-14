@@ -174,39 +174,78 @@ const MATHY =
   /^(frac|dfrac|tfrac|sqrt|sum|prod|int|iint|oint|lim|binom|vec|hat|bar|tilde|overline|underline|overrightarrow|mathrm|mathbf|mathbb|mathcal|operatorname|log|ln|exp|sin|cos|tan|sec|csc|cot|partial|nabla|cdots|ldots|dots|begin|end|left|right|substack|matrix|pmatrix|bmatrix|cases|align|aligned|text)$/;
 
 /* -------------------------------------------------------------------------- */
-/*  normalizeMath — fixed untuk <details> + inline math multi-line           */
+/*  normalizeMath                                                             */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Pastikan `<details>...</details>` punya blank line di sekitar kontennya,
- * sehingga markdown di dalam tetap diparsing (bukan dianggap raw HTML).
+ * Pastikan `<details>...</details>` punya blank line di sekitar kontennya
+ * agar markdown di dalam (termasuk rumus $...$) tetap diparsing.
  *
- * Contoh bug yang diperbaiki:
- *   <details>\n<summary>Jawaban</summary>\n$f'(x)=...$\n</details>
- * menjadi:
- *   <details>\n<summary>Jawaban</summary>\n\n$f'(x)=...$\n\n</details>
+ * Pendekatan: per-line scan untuk handle indentasi (list item) & line ending.
  */
 function fixDetailsBlocks(src: string): string {
-  return src.replace(/<details\b[\s\S]*?<\/details>/gi, (block) =>
-    block
-      // Blank line setelah </summary>
-      .replace(/(<\/summary>)[ \t]*\n(?!\s*\n)/gi, "$1\n\n")
-      // Blank line sebelum </details>
-      .replace(/([^\n])[ \t]*\n([ \t]*<\/details>)/gi, "$1\n\n$2"),
-  );
+  // Normalisasi line ending dulu — AI kadang kirim \r\n (Windows)
+  const normalized = src.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = normalized.split("\n");
+  const out: string[] = [];
+  let inDetails = false;
+  let indent = "";
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Deteksi awal <details> (mungkin dengan indentasi di dalam list item)
+    const openMatch = line.match(/^([ \t]*)<details\b/i);
+    if (openMatch) {
+      inDetails = true;
+      indent = openMatch[1];
+      out.push(line);
+      continue;
+    }
+
+    if (inDetails) {
+      // Setelah </summary> → pastikan ada blank line sebelum konten berikutnya
+      if (/<\/summary>\s*$/i.test(line)) {
+        out.push(line);
+        const next = lines[i + 1];
+        if (next !== undefined && next.trim() !== "") {
+          out.push(indent); // blank line dengan indentasi yang sama
+        }
+        continue;
+      }
+
+      // Sebelum </details> → pastikan ada blank line sebelum tag penutup
+      if (/^[ \t]*<\/details>/i.test(line)) {
+        const prev = out[out.length - 1];
+        if (prev !== undefined && prev.trim() !== "") {
+          out.push(indent);
+        }
+        out.push(line);
+        inDetails = false;
+        continue;
+      }
+    }
+
+    out.push(line);
+    void trimmed;
+  }
+
+  return out.join("\n");
 }
 
 export function normalizeMath(src: string): string {
-  // 0. Fix <details> blocks agar markdown di dalamnya diparsing
-  let out = fixDetailsBlocks(src);
+  // 0a. Normalisasi line ending
+  let out = src.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  // 0b. Fix <details> blocks agar markdown di dalamnya diparsing
+  out = fixDetailsBlocks(out);
 
   // 1. \[ ... \] -> $$ ... $$ ; \( ... \) -> $ ... $
   out = out.replace(/\\\[([\s\S]*?)\\\]/g, (_m, inner) => `\n$$\n${String(inner).trim()}\n$$\n`);
   out = out.replace(/\\\(([\s\S]*?)\\\)/g, (_m, inner) => `$${String(inner).trim()}$`);
 
   // protect(): split pada delimiter math/kode.
-  // PERUBAHAN: `[^$\n]*?` → `[^$]{1,500}?` — izinkan math inline multi-line
-  // (dulu `[^$\n]` memblokir math yang ditulis dalam beberapa baris).
   const protect = (s: string) =>
     s.split(/(\$\$[\s\S]*?\$\$|\$[^$]{1,500}?\$|`[^`]*`|```[\s\S]*?```)/g);
 
@@ -282,7 +321,6 @@ export function MarkdownPreview({ source }: { source: string }) {
           blockquote: ({ children }) => <Blockquote>{children}</Blockquote>,
           pre: ({ children }) => <>{children}</>,
           a: ({ href, children, ...rest }) => {
-            // Link internal (mulai "/") → pakai TanStack Router Link agar SPA tanpa refresh
             const isInternal = typeof href === "string" && href.startsWith("/");
             if (isInternal) {
               return (

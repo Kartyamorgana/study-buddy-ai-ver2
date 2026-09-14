@@ -28,7 +28,8 @@ const MATH_RULE =
   "(4) Jangan pernah menulis perintah LaTeX di luar pembatas math, dan jangan menaruh rumus di dalam code block. " +
   "(5) Setelah blok `$$...$$`, jangan lupa baris kosong sebelum lanjut ke teks berikutnya. " +
   "(6) PENTING: di dalam JSON, semua backslash LaTeX HARUS ditulis ganda (`\\\\frac`, `\\\\sqrt`, `\\\\lim`, dst) karena JSON memerlukan escaping. " +
-  "(7) WAJIB: setiap blok `$$...$$` harus dipisahkan dengan BARIS KOSONG sebelum dan sesudahnya. Di dalam blockquote (`> [!NOTE]`), baris kosong ditulis sebagai `>` tanpa teks. Contoh BENAR di callout:\n> Kalimat sebelum.\n>\n> $$rumus$$\n>\n> Kalimat setelah.";
+  "(7) WAJIB: setiap blok `$$...$$` harus dipisahkan dengan BARIS KOSONG sebelum dan sesudahnya. Di dalam blockquote (`> [!NOTE]`), baris kosong ditulis sebagai `>` tanpa teks. Contoh BENAR di callout:\n> Kalimat sebelum.\n>\n> $$rumus$$\n>\n> Kalimat setelah. " +
+  "(8) WAJIB: jika memakai HTML `<details>` untuk jawaban terlipat, WAJIB tambahkan BARIS KOSONG setelah `</summary>` dan sebelum `</details>`. Contoh BENAR:\n<details>\n<summary>Jawaban</summary>\n\nIsi jawaban dengan $rumus$ di sini.\n\n</details>";
 const AnalyzeInput = z.object({
   subject: z.enum(["umum", "kuantitatif", "matematika", "custom"]).default("custom"),
   topic: z.string().max(400).optional(),
