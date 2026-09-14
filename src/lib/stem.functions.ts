@@ -27,8 +27,8 @@ const MATH_RULE =
   "(3) Rumus inline `$...$` hanya untuk notasi pendek tanpa pecahan bertingkat (mis. `$x^2$`, `$\\pi r^2$`, `$x \\to \\infty$`, `$a_n$`). " +
   "(4) Jangan pernah menulis perintah LaTeX di luar pembatas math, dan jangan menaruh rumus di dalam code block. " +
   "(5) Setelah blok `$$...$$`, jangan lupa baris kosong sebelum lanjut ke teks berikutnya. " +
-  "(6) PENTING: di dalam JSON, semua backslash LaTeX HARUS ditulis ganda (`\\\\frac`, `\\\\sqrt`, `\\\\lim`, dst) karena JSON memerlukan escaping.";
-
+  "(6) PENTING: di dalam JSON, semua backslash LaTeX HARUS ditulis ganda (`\\\\frac`, `\\\\sqrt`, `\\\\lim`, dst) karena JSON memerlukan escaping. " +
+  "(7) WAJIB: setiap blok `$$...$$` harus dipisahkan dengan BARIS KOSONG sebelum dan sesudahnya. Di dalam blockquote (`> [!NOTE]`), baris kosong ditulis sebagai `>` tanpa teks. Contoh BENAR di callout:\n> Kalimat sebelum.\n>\n> $$rumus$$\n>\n> Kalimat setelah.";
 const AnalyzeInput = z.object({
   subject: z.enum(["umum", "kuantitatif", "matematika", "custom"]).default("custom"),
   topic: z.string().max(400).optional(),

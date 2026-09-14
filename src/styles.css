@@ -304,3 +304,36 @@
 .prose-note .katex-error {
   color: var(--color-destructive);
 }
+
+/* ============================================================================
+   KaTeX — force-hide MathML & annotation (fix duplikasi MMM)
+   KaTeX render tiap rumus jadi 3 layer: MathML + annotation + html.
+   Normalnya katex.min.css sembunyikan 2 layer pertama, tapi Tailwind v4
+   preflight bisa override. Paksa dengan !important.
+   ============================================================================ */
+
+.katex .katex-mathml {
+  position: absolute !important;
+  clip: rect(1px, 1px, 1px, 1px) !important;
+  padding: 0 !important;
+  border: 0 !important;
+  height: 1px !important;
+  width: 1px !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+}
+
+/* Fallback browser modern */
+.katex .katex-mathml {
+  clip-path: inset(50%) !important;
+}
+
+/* Pastikan HTML layer tetap tampil */
+.katex .katex-html {
+  display: inline-block;
+}
+
+/* Annotation MathML (source LaTeX) juga harus tersembunyi */
+.katex annotation {
+  display: none !important;
+}
