@@ -1,10 +1,18 @@
+// src/components/studynotes/MarkdownPreview.tsx
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
-import { useCallback, useMemo, useState } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  useCallback,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Copy,
   Check,
@@ -17,7 +25,11 @@ import {
   FileText,
 } from "lucide-react";
 
-function CodeBlock({ className, children }: { className?: string; children: React.ReactNode }) {
+/* -------------------------------------------------------------------------- */
+/*  CodeBlock                                                                 */
+/* -------------------------------------------------------------------------- */
+
+function CodeBlock({ className, children }: { className?: string; children: ReactNode }) {
   const [copied, setCopied] = useState(false);
   const lang = (className ?? "").replace("language-", "").replace("hljs", "").trim() || "text";
   const text = String(Array.isArray(children) ? children.join("") : children ?? "");
@@ -42,6 +54,10 @@ function CodeBlock({ className, children }: { className?: string; children: Reac
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Callouts                                                                  */
+/* -------------------------------------------------------------------------- */
+
 const CALLOUTS = {
   NOTE: { label: "Catatan", icon: Info, cls: "callout-note" },
   TIP: { label: "Tips", icon: Lightbulb, cls: "callout-tip" },
@@ -52,13 +68,76 @@ const CALLOUTS = {
 
 type CalloutKey = keyof typeof CALLOUTS;
 
-function nodeText(node: React.ReactNode): string {
-  if (node === null || node === undefined || typeof node === "boolean") return "";
-  if (typeof node === "string" || typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(nodeText).join("");
-  const el = node as { props?: { children?: React.ReactNode } };
-  return el.props ? nodeText(el.props.children) : "";
+const CALLOUT_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*\n?/i;
+
+/**
+ * Deteksi marker `[!TYPE]` di awal blockquote TANPA re-render ulang isinya.
+ * Mengembalikan { key, children } dengan marker di-strip, atau null jika bukan callout.
+ */
+function extractCallout(children: ReactNode): { key: CalloutKey; children: ReactNode } | null {
+  const arr = Array.isArray(children) ? children : [children];
+  if (arr.length === 0) return null;
+  const first = arr[0];
+
+  // Kasus A: anak pertama adalah string mentah
+  if (typeof first === "string") {
+    const m = first.match(CALLOUT_RE);
+    if (!m) return null;
+    const key = m[1]!.toUpperCase() as CalloutKey;
+    const rest = first.slice(m[0].length);
+    const remaining = rest.trim() ? [rest, ...arr.slice(1)] : arr.slice(1);
+    return { key, children: remaining.length === 1 ? remaining[0] : remaining };
+  }
+
+  // Kasus B: anak pertama adalah elemen (biasanya <p>)
+  if (isValidElement(first)) {
+    const el = first as { props?: { children?: ReactNode } };
+    const inner = el.props?.children;
+    const innerArr = Array.isArray(inner) ? inner : [inner];
+    const firstInner = innerArr[0];
+    if (typeof firstInner !== "string") return null;
+
+    const m = firstInner.match(CALLOUT_RE);
+    if (!m) return null;
+
+    const key = m[1]!.toUpperCase() as CalloutKey;
+    const restText = firstInner.slice(m[0].length);
+    const newInnerArr = restText.trim()
+      ? [restText, ...innerArr.slice(1)]
+      : innerArr.slice(1);
+
+    // cloneElement untuk strip marker — anak-anak lain tetap utuh
+    const clonedFirst = cloneElement(
+      first as React.ReactElement,
+      {},
+      ...(newInnerArr as ReactNode[]),
+    );
+    const newChildren = [clonedFirst, ...arr.slice(1)];
+    return { key, children: newChildren.length === 1 ? newChildren[0] : newChildren };
+  }
+
+  return null;
 }
+
+function Blockquote({ children }: { children?: ReactNode }) {
+  const callout = extractCallout(children);
+  if (!callout) return <blockquote>{children}</blockquote>;
+  const meta = CALLOUTS[callout.key];
+  const Icon = meta.icon;
+  return (
+    <div className={`callout ${meta.cls}`}>
+      <div className="callout-title">
+        <Icon className="w-4 h-4" />
+        {meta.label}
+      </div>
+      <div className="callout-body">{callout.children}</div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Symbol map & MATHY                                                        */
+/* -------------------------------------------------------------------------- */
 
 const SYMBOLS: Record<string, string> = {
   rightarrow: "→",
@@ -90,19 +169,47 @@ const SYMBOLS: Record<string, string> = {
   Omega: "Ω",
 };
 
-/** Perintah LaTeX yang hampir selalu butuh mode matematika. */
 const MATHY =
   /^(frac|dfrac|tfrac|sqrt|sum|prod|int|iint|oint|lim|binom|vec|hat|bar|tilde|overline|underline|overrightarrow|mathrm|mathbf|mathbb|mathcal|operatorname|log|ln|exp|sin|cos|tan|sec|csc|cot|partial|nabla|cdots|ldots|dots|begin|end|left|right|substack|matrix|pmatrix|bmatrix|cases|align|aligned|text)$/;
 
-/** Normalisasi notasi LaTeX agar konsisten dipakai remark-math. */
+/* -------------------------------------------------------------------------- */
+/*  normalizeMath — fixed untuk <details> + inline math multi-line           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Pastikan `<details>...</details>` punya blank line di sekitar kontennya,
+ * sehingga markdown di dalam tetap diparsing (bukan dianggap raw HTML).
+ *
+ * Contoh bug yang diperbaiki:
+ *   <details>\n<summary>Jawaban</summary>\n$f'(x)=...$\n</details>
+ * menjadi:
+ *   <details>\n<summary>Jawaban</summary>\n\n$f'(x)=...$\n\n</details>
+ */
+function fixDetailsBlocks(src: string): string {
+  return src.replace(/<details\b[\s\S]*?<\/details>/gi, (block) =>
+    block
+      // Blank line setelah </summary>
+      .replace(/(<\/summary>)[ \t]*\n(?!\s*\n)/gi, "$1\n\n")
+      // Blank line sebelum </details>
+      .replace(/([^\n])[ \t]*\n([ \t]*<\/details>)/gi, "$1\n\n$2"),
+  );
+}
+
 export function normalizeMath(src: string): string {
-  let out = src;
-  // \[ ... \] -> $$ ... $$ ; \( ... \) -> $ ... $
+  // 0. Fix <details> blocks agar markdown di dalamnya diparsing
+  let out = fixDetailsBlocks(src);
+
+  // 1. \[ ... \] -> $$ ... $$ ; \( ... \) -> $ ... $
   out = out.replace(/\\\[([\s\S]*?)\\\]/g, (_m, inner) => `\n$$\n${String(inner).trim()}\n$$\n`);
   out = out.replace(/\\\(([\s\S]*?)\\\)/g, (_m, inner) => `$${String(inner).trim()}$`);
-  const protect = (s: string) => s.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$|`[^`]*`|```[\s\S]*?```)/g);
 
-  // \begin{env} ... \end{env} di luar math -> blok $$
+  // protect(): split pada delimiter math/kode.
+  // PERUBAHAN: `[^$\n]*?` → `[^$]{1,500}?` — izinkan math inline multi-line
+  // (dulu `[^$\n]` memblokir math yang ditulis dalam beberapa baris).
+  const protect = (s: string) =>
+    s.split(/(\$\$[\s\S]*?\$\$|\$[^$]{1,500}?\$|`[^`]*`|```[\s\S]*?```)/g);
+
+  // 2. \begin{env} ... \end{env} di luar math -> blok $$
   out = protect(out)
     .map((seg, i) =>
       i % 2 === 1
@@ -117,7 +224,7 @@ export function normalizeMath(src: string): string {
     )
     .join("");
 
-  // Perintah bermakna matematika + argumen/sub-superskrip yang lupa dibungkus $
+  // 3. Perintah bermakna matematika + argumen/sub-superskrip yang lupa dibungkus $
   out = protect(out)
     .map((seg, i) => {
       if (i % 2 === 1) return seg;
@@ -132,7 +239,7 @@ export function normalizeMath(src: string): string {
     })
     .join("");
 
-  // Perintah LaTeX yang berdiri sendiri di luar math -> simbol unicode
+  // 4. Perintah LaTeX berdiri sendiri di luar math -> simbol unicode
   return protect(out)
     .map((seg, i) => {
       if (i % 2 === 1) return seg;
@@ -141,35 +248,9 @@ export function normalizeMath(src: string): string {
     .join("");
 }
 
-function Blockquote({ children }: { children?: React.ReactNode }) {
-  const text = nodeText(children).trim();
-  const match = text.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/i);
-  if (!match) return <blockquote>{children}</blockquote>;
-  const key = match[1]!.toUpperCase() as CalloutKey;
-  const meta = CALLOUTS[key];
-  const Icon = meta.icon;
-  const body = text.replace(match[0], "");
-  return (
-    <div className={`callout ${meta.cls}`}>
-      <div className="callout-title">
-        <Icon className="w-4 h-4" />
-        {meta.label}
-      </div>
-      <div className="callout-body">
-        {body.trim() ? (
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
-          >
-            {normalizeMath(body)}
-          </ReactMarkdown>
-        ) : (
-          children
-        )}
-      </div>
-    </div>
-  );
-}
+/* -------------------------------------------------------------------------- */
+/*  MarkdownPreview                                                           */
+/* -------------------------------------------------------------------------- */
 
 export function MarkdownPreview({ source }: { source: string }) {
   const stats = useMemo(() => {
@@ -191,7 +272,11 @@ export function MarkdownPreview({ source }: { source: string }) {
       )}
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeRaw, [rehypeKatex, { throwOnError: false, strict: false }], rehypeHighlight]}
+        rehypePlugins={[
+          rehypeRaw,
+          [rehypeKatex, { throwOnError: false, strict: false }],
+          rehypeHighlight,
+        ]}
         components={{
           blockquote: ({ children }) => <Blockquote>{children}</Blockquote>,
           pre: ({ children }) => <>{children}</>,
@@ -201,7 +286,7 @@ export function MarkdownPreview({ source }: { source: string }) {
             ...props
           }: {
             className?: string;
-            children?: React.ReactNode;
+            children?: ReactNode;
             node?: unknown;
             inline?: boolean;
           }) => {
