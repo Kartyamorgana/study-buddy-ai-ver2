@@ -1,8 +1,9 @@
 // src/components/stem/StemStudioPage.tsx
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   BarChart3,
+  Bookmark,
   FlaskConical,
   Moon,
   Notebook,
@@ -27,16 +28,32 @@ import type { StemAnalysis, SubjectId } from "@/lib/stem.functions";
 
 type StemTab = "analyzer" | "cheatsheet" | "practice";
 
-export function StemStudioPage() {
+const VALID_SUBJECTS: SubjectId[] = ["umum", "kuantitatif", "matematika", "custom"];
+
+export function StemStudioPage({
+  initialTopic,
+  initialSubject,
+}: {
+  initialTopic?: string;
+  initialSubject?: string;
+} = {}) {
   const { theme, toggle } = useTheme();
   const [subject, setSubject] = useState<SubjectId>("matematika");
   const [analysis, setAnalysis] = useState<StemAnalysis | null>(null);
   const [tab, setTab] = useState<StemTab>("analyzer");
   const [source, setSource] = useState<StemSource | null>(null);
 
-  // Materi acuan (dipakai Cheat Sheet & Practice):
-  // - Prioritas: hasil analisis AI (paling kaya konteks)
-  // - Fallback: sumber yang dipilih user (Notes / File / Topic)
+  // Auto-fill dari search params (dipakai oleh tombol "Latihan topik ini" di Analytics)
+  useEffect(() => {
+    if (initialSubject && VALID_SUBJECTS.includes(initialSubject as SubjectId)) {
+      setSubject(initialSubject as SubjectId);
+    }
+    if (initialTopic) {
+      setSource({ type: "topic", topic: initialTopic });
+      setTab("practice");
+    }
+  }, [initialTopic, initialSubject]);
+
   const derivedFromAnalysis = analysis
     ? [analysis.overview, analysis.concepts, analysis.formulas, analysis.pitfalls]
         .filter((s) => s && s.trim().length > 0)
@@ -88,6 +105,19 @@ export function StemStudioPage() {
         </div>
 
         <StemTopNav className="ml-auto" />
+
+        <Button
+          asChild
+          size="sm"
+          variant="ghost"
+          className="h-8 gap-1"
+          title="Soal tersimpan"
+        >
+          <Link to="/stem/bookmarks">
+            <Bookmark className="w-4 h-4" />
+            <span className="hidden sm:inline text-xs">Bookmark</span>
+          </Link>
+        </Button>
 
         <Button
           asChild

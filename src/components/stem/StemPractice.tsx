@@ -5,6 +5,8 @@ import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
   BarChart3,
+  Bookmark,
+  BookmarkCheck,
   Loader2,
   Lightbulb,
   Timer,
@@ -24,11 +26,14 @@ import {
   type StemQuestion,
 } from "@/lib/stem.functions";
 import {
+  bookmarkQuestion,
   createStemSession,
+  fetchBookmarks,
   finishStemSession,
   insertStemQuestions,
+  removeBookmarkByText,
 } from "@/lib/stem-db";
-import { computeScore } from "@/lib/stem-schema";
+import type { StemMode } from "@/lib/stem-schema";
 
 type Difficulty = "easy" | "medium" | "hard" | "hots";
 const DIFFS: { id: Difficulty; label: string }[] = [
@@ -58,14 +63,16 @@ export function StemPractice({
   subject,
   material,
   topic,
+  initialDifficulty,
 }: {
   subject: SubjectId;
   material?: string;
   topic?: string;
+  initialDifficulty?: Difficulty;
 }) {
   const gen = useServerFn(generateStemQuiz);
   const [count, setCount] = useState(10);
-  const [difficulty, setDifficulty] = useState<Difficulty>("medium");
+  const [difficulty, setDifficulty] = useState<Difficulty>(initialDifficulty ?? "medium");
   const [exam, setExam] = useState(false);
   const [minutes, setMinutes] = useState(20);
   const [ownTopic, setOwnTopic] = useState("");
@@ -80,11 +87,28 @@ export function StemPractice({
   const [finished, setFinished] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedSessionId, setSavedSessionId] = useState<string | null>(null);
+  const [bookmarkedTexts, setBookmarkedTexts] = useState<Set<string>>(new Set());
+  const [bookmarkBusy, setBookmarkBusy] = useState<string | null>(null);
+  const [retryRound, setRetryRound] = useState(1);
   const startedAt = useRef(0);
   const [elapsed, setElapsed] = useState(0);
   const savingRef = useRef(false);
 
-  // Timer + auto-submit saat exam mode habis waktu
+  // Sync difficulty when parent changes
+  useEffect(() => {
+    if (initialDifficulty) setDifficulty(initialDifficulty);
+  }, [initialDifficulty]);
+
+  // Fetch existing bookmarks saat mount
+  useEffect(() => {
+    fetchBookmarks()
+      .then((rows) => setBookmarkedTexts(new Set(rows.map((b) => b.question_text))))
+      .catch(() => {
+        /* non-critical */
+      });
+  }, []);
+
+  // Timer
   useEffect(() => {
     if (!questions || finished) return;
     const t = setInterval(() => {
@@ -92,7 +116,6 @@ export function StemPractice({
       if (exam) {
         setLeft((v) => {
           if (v <= 1) {
-            // Trigger kumpulkan otomatis
             void submitSession(true);
             return 0;
           }
@@ -112,34 +135,52 @@ export function StemPractice({
     );
   }, [questions, answers]);
 
-  const run = async () => {
+  const wrongCount = useMemo(() => {
+    if (!questions) return 0;
+    return questions.length - score;
+  }, [questions, score]);
+
+  const run = async (overrides?: {
+    count?: number;
+    difficulty?: Difficulty;
+    questions?: StemQuestion[];
+  }) => {
     const t = ownTopic.trim() || topic?.trim();
-    if (!t && !material?.trim()) {
+    if (!overrides?.questions && !t && !material?.trim()) {
       toast.error("Analisis materi dulu atau tulis topik soal");
       return;
     }
+
     setBusy(true);
     try {
-      const res = await gen({
-        data: {
-          subject,
-          difficulty,
-          count,
-          topic: t || undefined,
-          material: material?.trim() ? material.slice(0, 120000) : undefined,
-        },
-      });
-      setQuestions(res.questions);
+      let nextQuestions: StemQuestion[];
+      if (overrides?.questions) {
+        nextQuestions = overrides.questions;
+      } else {
+        const res = await gen({
+          data: {
+            subject,
+            difficulty: overrides?.difficulty ?? difficulty,
+            count: overrides?.count ?? count,
+            topic: t || undefined,
+            material: material?.trim() ? material.slice(0, 120000) : undefined,
+          },
+        });
+        nextQuestions = res.questions;
+      }
+
+      setQuestions(nextQuestions);
       setIdx(0);
       setAnswers({});
       setRevealed({});
       setHintLevel({});
       setFinished(false);
       setSavedSessionId(null);
-      setLeft(minutes * 60);
+      const estSec = exam ? (overrides?.questions?.length ?? count) * 90 : 0;
+      setLeft(exam ? Math.max(60, estSec) : 0);
       startedAt.current = Date.now();
       setElapsed(0);
-      toast.success(`${res.questions.length} soal siap`);
+      toast.success(`${nextQuestions.length} soal siap`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal membuat soal");
     } finally {
@@ -147,10 +188,54 @@ export function StemPractice({
     }
   };
 
-  /**
-   * Persist sesi ke DB.
-   * Dipanggil otomatis saat waktu habis (exam) atau manual lewat "Kumpulkan".
-   */
+  const retryWrong = () => {
+    if (!questions) return;
+    const wrong = questions.filter((q, i) => !isCorrect(q, answers[i] ?? ""));
+    if (wrong.length === 0) {
+      toast.info("Semua jawaban benar — tidak ada yang perlu diulang 🎉");
+      return;
+    }
+    setRetryRound((r) => r + 1);
+    void run({ questions: wrong, count: wrong.length });
+  };
+
+  const toggleBookmark = async (q: StemQuestion) => {
+    const text = q.question;
+    if (bookmarkBusy === text) return;
+    setBookmarkBusy(text);
+    try {
+      if (bookmarkedTexts.has(text)) {
+        await removeBookmarkByText(text);
+        setBookmarkedTexts((prev) => {
+          const next = new Set(prev);
+          next.delete(text);
+          return next;
+        });
+        toast.success("Bookmark dihapus");
+      } else {
+        await bookmarkQuestion({
+          subject,
+          difficulty,
+          question_text: q.question,
+          type: q.type,
+          options: q.options,
+          correct_answer: q.answer,
+          solution: q.solution,
+          hints: q.hints,
+          topic: q.topic,
+        });
+        setBookmarkedTexts((prev) => new Set(prev).add(text));
+        toast.success("Soal disimpan ke Bookmark");
+      }
+    } catch (e) {
+      toast.error("Gagal update bookmark", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setBookmarkBusy(null);
+    }
+  };
+
   const submitSession = useCallback(
     async (auto = false) => {
       if (!questions || savingRef.current) return;
@@ -162,11 +247,12 @@ export function StemPractice({
           0,
         );
         const durationSec = Math.max(1, Math.floor((Date.now() - startedAt.current) / 1000));
+        const mode: StemMode = exam ? "exam" : "relaxed";
 
         const session = await createStemSession({
           subject,
           difficulty,
-          mode: exam ? "exam" : "relaxed",
+          mode,
           topic: (ownTopic.trim() || topic || "").trim() || null,
           time_limit_sec: exam ? minutes * 60 : null,
           total_questions: questions.length,
@@ -197,16 +283,12 @@ export function StemPractice({
 
         setSavedSessionId(session.id);
         setFinished(true);
-        if (auto) {
-          toast.info("Waktu habis — sesi otomatis dikumpulkan");
-        } else {
-          toast.success("Sesi tersimpan");
-        }
+        if (auto) toast.info("Waktu habis — sesi otomatis dikumpulkan");
+        else toast.success("Sesi tersimpan");
       } catch (e) {
         toast.error("Gagal menyimpan sesi", {
           description: e instanceof Error ? e.message : undefined,
         });
-        // Tetap tampilkan layar hasil walau persist gagal — user tetap bisa review.
         setFinished(true);
       } finally {
         savingRef.current = false;
@@ -219,7 +301,7 @@ export function StemPractice({
   const mmss = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 
-  // ---------- CONFIG SCREEN ----------
+  /* --------------------------- CONFIG SCREEN ----------------------------- */
   if (!questions) {
     return (
       <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
@@ -245,9 +327,7 @@ export function StemPractice({
         </div>
 
         <div>
-          <div className="text-xs font-medium text-muted-foreground mb-1.5">
-            Tingkat kesulitan
-          </div>
+          <div className="text-xs font-medium text-muted-foreground mb-1.5">Tingkat kesulitan</div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {DIFFS.map((d) => (
               <button
@@ -316,7 +396,7 @@ export function StemPractice({
           }`}
         />
 
-        <Button onClick={run} disabled={busy} className="w-full gap-1.5">
+        <Button onClick={() => void run()} disabled={busy} className="w-full gap-1.5">
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trophy className="w-4 h-4" />}
           {busy ? "Menyusun soal…" : "Mulai latihan"}
         </Button>
@@ -324,7 +404,7 @@ export function StemPractice({
     );
   }
 
-  // ---------- RESULT SCREEN ----------
+  /* --------------------------- RESULT SCREEN ----------------------------- */
   if (finished) {
     const pct = Math.round((score / questions.length) * 100);
     return (
@@ -337,6 +417,11 @@ export function StemPractice({
           <div className="text-sm text-muted-foreground mt-1">
             Skor {pct} · waktu {mmss(elapsed)}
           </div>
+          {retryRound > 1 && (
+            <div className="text-[11px] text-muted-foreground mt-1">
+              Ronde ke-{retryRound}
+            </div>
+          )}
           {saving && (
             <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
               <Loader2 className="w-3 h-3 animate-spin" /> Menyimpan…
@@ -345,30 +430,44 @@ export function StemPractice({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="secondary" className="flex-1 gap-1.5">
+          {wrongCount > 0 && (
+            <Button
+              variant="default"
+              className="flex-1 min-w-35 gap-1.5"
+              onClick={retryWrong}
+            >
+              <RotateCcw className="w-4 h-4" />
+              Ulangi {wrongCount} soal salah
+            </Button>
+          )}
+          <Button asChild variant="secondary" className="flex-1 min-w-35 gap-1.5">
             <Link to="/stem/analytics">
               <BarChart3 className="w-4 h-4" /> Lihat Analitik
             </Link>
           </Button>
           <Button
             variant="secondary"
-            className="flex-1 gap-1.5"
+            className="flex-1 min-w-35 gap-1.5"
             onClick={() => setQuestions(null)}
           >
-            <RotateCcw className="w-4 h-4" /> Latihan lagi
+            <Trophy className="w-4 h-4" /> Latihan baru
           </Button>
         </div>
 
         <div className="space-y-3">
           {questions.map((q, i) => {
             const ok = isCorrect(q, answers[i] ?? "");
+            const isBookmarked = bookmarkedTexts.has(q.question);
             return (
               <details key={i} className="rounded-xl border border-border p-3">
-                <summary className="cursor-pointer text-sm font-medium">
+                <summary className="cursor-pointer text-sm font-medium flex items-center gap-2">
                   <span className={ok ? "text-primary" : "text-destructive"}>
                     {ok ? "✓" : "✗"}
-                  </span>{" "}
-                  Soal {i + 1} {q.topic ? `· ${q.topic}` : ""}
+                  </span>
+                  <span className="flex-1">
+                    Soal {i + 1} {q.topic ? `· ${q.topic}` : ""}
+                  </span>
+                  {isBookmarked && <BookmarkCheck className="w-3.5 h-3.5 text-primary" />}
                 </summary>
                 <div className="mt-2">
                   <MarkdownPreview source={q.question} />
@@ -377,6 +476,25 @@ export function StemPractice({
                   </div>
                   <div className="mt-2 border-t border-border pt-2">
                     <MarkdownPreview source={q.solution || "_Tidak ada pembahasan._"} />
+                  </div>
+                  <div className="mt-2 flex justify-end">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => void toggleBookmark(q)}
+                      disabled={bookmarkBusy === q.question}
+                    >
+                      {isBookmarked ? (
+                        <>
+                          <BookmarkCheck className="w-3.5 h-3.5 text-primary" /> Tersimpan
+                        </>
+                      ) : (
+                        <>
+                          <Bookmark className="w-3.5 h-3.5" /> Bookmark
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </div>
               </details>
@@ -387,11 +505,12 @@ export function StemPractice({
     );
   }
 
-  // ---------- LIVE SCREEN ----------
+  /* ---------------------------- LIVE SCREEN ------------------------------ */
   const q = questions[idx]!;
   const given = answers[idx] ?? "";
   const hints = q.hints ?? [];
   const shown = hintLevel[idx] ?? 0;
+  const isBookmarked = bookmarkedTexts.has(q.question);
 
   return (
     <div className="space-y-3">
@@ -399,8 +518,23 @@ export function StemPractice({
         <div className="text-xs font-medium text-muted-foreground">
           Soal {idx + 1} dari {questions.length}
           {q.topic ? ` · ${q.topic}` : ""}
+          {retryRound > 1 ? ` · ronde ${retryRound}` : ""}
         </div>
         <div className="flex items-center gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => void toggleBookmark(q)}
+            disabled={bookmarkBusy === q.question}
+            className="p-1 rounded hover:bg-accent transition-colors"
+            aria-label={isBookmarked ? "Hapus bookmark" : "Simpan ke bookmark"}
+            title={isBookmarked ? "Hapus bookmark" : "Bookmark soal"}
+          >
+            {isBookmarked ? (
+              <BookmarkCheck className="w-4 h-4 text-primary" />
+            ) : (
+              <Bookmark className="w-4 h-4 text-muted-foreground" />
+            )}
+          </button>
           <span className="inline-flex items-center gap-1 tabular-nums">
             <Timer className="w-3.5 h-3.5" />
             {exam ? mmss(left) : mmss(elapsed)}
@@ -470,9 +604,7 @@ export function StemPractice({
                   : "Petunjuk lagi"}
             </Button>
           )}
-
           <ScratchpadDrawer />
-
           {!exam && (
             <Button
               size="sm"

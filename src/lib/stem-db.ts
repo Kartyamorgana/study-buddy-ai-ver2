@@ -2,6 +2,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import type {
   SessionFinishPayload,
+  StemBookmarkInsert,
+  StemBookmarkRow,
   StemDb,
   StemQuestionInsert,
   StemQuestionRow,
@@ -11,16 +13,9 @@ import type {
 } from "./stem-schema";
 import { computeScore } from "./stem-schema";
 
-/**
- * Cast scoped. Setelah `src/integrations/supabase/types.ts` di-regenerate
- * (mengandung stem_quiz_sessions & stem_quiz_questions), ganti baris ini
- * menjadi `const db = () => supabase;` dan hapus cast-nya.
- */
 const db = () => supabase as unknown as StemDb;
 
-/* -------------------------------------------------------------------------- */
-/*  Sessions                                                                  */
-/* -------------------------------------------------------------------------- */
+/* ------------------------------- Sessions -------------------------------- */
 
 export async function createStemSession(
   input: StemSessionInsert,
@@ -34,9 +29,7 @@ export async function createStemSession(
   return data;
 }
 
-export async function finishStemSession(
-  payload: SessionFinishPayload,
-): Promise<void> {
+export async function finishStemSession(payload: SessionFinishPayload): Promise<void> {
   const score = computeScore(payload.correctCount, payload.totalQuestions);
   const { error } = await db()
     .from("stem_quiz_sessions")
@@ -78,9 +71,7 @@ export async function fetchSessionWithQuestions(sessionId: string): Promise<{
   return { session: s.data, questions: q.data ?? [] };
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Questions                                                                 */
-/* -------------------------------------------------------------------------- */
+/* ------------------------------- Questions ------------------------------- */
 
 export async function insertStemQuestions(
   rows: StemQuestionInsert[],
@@ -112,9 +103,7 @@ export async function submitStemAnswer(args: {
   if (error) throw error;
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Analytics                                                                 */
-/* -------------------------------------------------------------------------- */
+/* ------------------------------- Analytics ------------------------------- */
 
 export async function fetchWeakness(): Promise<WeaknessRow[]> {
   const { data, error } = await db()
@@ -125,10 +114,6 @@ export async function fetchWeakness(): Promise<WeaknessRow[]> {
   return data ?? [];
 }
 
-/**
- * Weakness ringkas per kategori (PU/PK/PM/STEM): rata-rata akurasi
- * dan jumlah topik lemah (akurasi < 60%).
- */
 export type CategorySummary = {
   subject: WeaknessRow["subject"];
   totalAttempts: number;
@@ -159,4 +144,43 @@ export function summarizeByCategory(rows: WeaknessRow[]): CategorySummary[] {
         : 0;
   }
   return [...map.values()];
+}
+
+/* ------------------------------ Bookmarks -------------------------------- */
+
+export async function fetchBookmarks(): Promise<StemBookmarkRow[]> {
+  const { data, error } = await db()
+    .from("stem_bookmarked_questions")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function bookmarkQuestion(
+  input: StemBookmarkInsert,
+): Promise<StemBookmarkRow> {
+  const { data, error } = await db()
+    .from("stem_bookmarked_questions")
+    .insert(input)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function removeBookmarkByText(questionText: string): Promise<void> {
+  const { error } = await db()
+    .from("stem_bookmarked_questions")
+    .delete()
+    .eq("question_text", questionText);
+  if (error) throw error;
+}
+
+export async function deleteBookmark(id: string): Promise<void> {
+  const { error } = await db()
+    .from("stem_bookmarked_questions")
+    .delete()
+    .eq("id", id);
+  if (error) throw error;
 }

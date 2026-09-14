@@ -2,10 +2,6 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/* -------------------------------------------------------------------------- */
-/*  Enum / konstanta                                                          */
-/* -------------------------------------------------------------------------- */
-
 export const STEM_SUBJECTS = ["umum", "kuantitatif", "matematika", "custom"] as const;
 export const STEM_DIFFICULTIES = ["easy", "medium", "hard", "hots"] as const;
 export const STEM_MODES = ["relaxed", "exam"] as const;
@@ -19,7 +15,7 @@ export const DifficultySchema = z.enum(STEM_DIFFICULTIES);
 export const ModeSchema = z.enum(STEM_MODES);
 
 /* -------------------------------------------------------------------------- */
-/*  Row types (sinkron dengan migration SQL)                                  */
+/*  Row types                                                                 */
 /* -------------------------------------------------------------------------- */
 
 export type StemSessionRow = {
@@ -68,8 +64,45 @@ export type WeaknessRow = {
 };
 
 /* -------------------------------------------------------------------------- */
-/*  Insert payloads — hanya field yang boleh di-set CLIENT saat INSERT        */
-/*  (id, user_id, started_at, ended_at di-handle DB / diisi belakangan)       */
+/*  Bookmark types                                                            */
+/* -------------------------------------------------------------------------- */
+
+export type StemBookmarkRow = {
+  id: string;
+  user_id: string;
+  subject: StemSubject;
+  difficulty: StemDifficulty;
+  question_text: string;
+  type: "mc" | "num";
+  options: string[];
+  correct_answer: string;
+  solution: string;
+  hints: string[];
+  topic: string;
+  note: string | null;
+  created_at: string;
+};
+
+export type StemBookmarkInsert = {
+  subject: StemSubject;
+  difficulty: StemDifficulty;
+  question_text: string;
+  type: "mc" | "num";
+  options: string[];
+  correct_answer: string;
+  solution: string;
+  hints: string[];
+  topic: string;
+  note?: string | null;
+};
+
+export type StemBookmarkUpdate = {
+  note?: string | null;
+  topic?: string;
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Insert / Update payloads                                                  */
 /* -------------------------------------------------------------------------- */
 
 export type StemSessionInsert = {
@@ -78,11 +111,11 @@ export type StemSessionInsert = {
   mode: StemMode;
   topic: string | null;
   time_limit_sec: number | null;
-  total_questions?: number;             // DEFAULT 0 di SQL
-  correct_count?: number;               // DEFAULT 0 di SQL
-  score?: number;                       // DEFAULT 0.00 di SQL
-  duration_sec?: number;                // DEFAULT 0 di SQL
-  metadata?: Record<string, unknown>;   // DEFAULT '{}' di SQL
+  total_questions?: number;
+  correct_count?: number;
+  score?: number;
+  duration_sec?: number;
+  metadata?: Record<string, unknown>;
 };
 
 export type StemQuestionInsert = {
@@ -95,14 +128,10 @@ export type StemQuestionInsert = {
   hints: string[];
   solution: string;
   topic: string;
-  user_answer?: string | null;          // DEFAULT NULL di SQL
-  is_correct?: boolean | null;          // DEFAULT NULL di SQL
-  time_spent_sec?: number;              // DEFAULT 0 di SQL
+  user_answer?: string | null;
+  is_correct?: boolean | null;
+  time_spent_sec?: number;
 };
-
-/* -------------------------------------------------------------------------- */
-/*  Update payloads — kontrak terpisah dari Insert                            */
-/* -------------------------------------------------------------------------- */
 
 export type StemSessionUpdate = {
   subject?: StemSubject;
@@ -125,9 +154,7 @@ export type StemQuestionUpdate = {
 };
 
 /* -------------------------------------------------------------------------- */
-/*  Tipe Supabase client khusus tabel STEM                                    */
-/*  → sampai `types.ts` di-regenerate, kita cast `supabase as StemDb`.        */
-/*  Setelah regen, ganti cast dengan import `Database` langsung (1 baris).    */
+/*  Database types (cast scoped)                                              */
 /* -------------------------------------------------------------------------- */
 
 export type StemDatabase = {
@@ -145,12 +172,15 @@ export type StemDatabase = {
         Update: StemQuestionUpdate;
         Relationships: [];
       };
-    };
-    Views: {
-      stem_weakness: {
-        Row: WeaknessRow;
+      stem_bookmarked_questions: {
+        Row: StemBookmarkRow;
+        Insert: StemBookmarkInsert;
+        Update: StemBookmarkUpdate;
         Relationships: [];
       };
+    };
+    Views: {
+      stem_weakness: { Row: WeaknessRow; Relationships: [] };
     };
     Functions: Record<string, never>;
     Enums: Record<string, never>;
@@ -161,7 +191,7 @@ export type StemDatabase = {
 export type StemDb = SupabaseClient<StemDatabase>;
 
 /* -------------------------------------------------------------------------- */
-/*  Payload runtime (dipakai UI <-> DB)                                       */
+/*  Runtime payloads                                                          */
 /* -------------------------------------------------------------------------- */
 
 export type SessionStartPayload = {
@@ -194,7 +224,6 @@ export const SessionFinishSchema = z.object({
   durationSec: z.number().int().min(0),
 });
 
-/** Hitung skor 0–100 dari rasio benar/total. */
 export function computeScore(correct: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((correct / total) * 10000) / 100;

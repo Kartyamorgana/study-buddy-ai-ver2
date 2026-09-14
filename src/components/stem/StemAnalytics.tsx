@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock,
   Loader2,
+  Play,
   RefreshCw,
   Target,
   TrendingDown,
@@ -41,6 +42,13 @@ function fmtRelative(iso: string): string {
   if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} hari lalu`;
   return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
 }
+
+const SUBJECT_LABEL: Record<string, string> = {
+  umum: "Penalaran Umum",
+  kuantitatif: "Pengetahuan Kuantitatif",
+  matematika: "Penalaran Matematika",
+  custom: "STEM / Mapel Lain",
+};
 
 export function StemAnalytics() {
   const [loading, setLoading] = useState(true);
@@ -113,7 +121,6 @@ export function StemAnalytics() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
@@ -129,8 +136,8 @@ export function StemAnalytics() {
             <RefreshCw className="w-3.5 h-3.5" /> Segarkan
           </Button>
           <Button asChild size="sm" variant="ghost" className="h-8 gap-1">
-            <Link to="/stem">
-              <ArrowLeft className="w-3.5 h-3.5" /> Kembali ke Studio
+            <Link to="/stem" search={{}}>
+                <ArrowLeft className="w-3.5 h-3.5" /> Kembali ke Studio
             </Link>
           </Button>
         </div>
@@ -144,7 +151,7 @@ export function StemAnalytics() {
             Selesaikan satu sesi latihan di tab <b>Latihan</b>, statistik akan muncul di sini.
           </p>
           <Button asChild size="sm" className="mt-4 gap-1">
-            <Link to="/stem">
+            <Link to="/stem" search={{}}>
               <ArrowLeft className="w-3.5 h-3.5" /> Mulai latihan
             </Link>
           </Button>
@@ -153,7 +160,6 @@ export function StemAnalytics() {
 
       {!empty && (
         <>
-          {/* Overview stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard
               label="Total soal dikerjakan"
@@ -178,7 +184,6 @@ export function StemAnalytics() {
             />
           </div>
 
-          {/* Per-category cards */}
           <div>
             <h2 className="text-sm font-semibold mb-2">Per Kategori SNBT</h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -188,15 +193,14 @@ export function StemAnalytics() {
                 const attempts = s?.totalAttempts ?? 0;
                 const accuracy = s?.accuracyPct ?? 0;
                 return (
-                  <div
-                    key={sid}
-                    className={`rounded-2xl border-2 bg-card p-4 ${meta.accent}`}
-                  >
+                  <div key={sid} className={`rounded-2xl border-2 bg-card p-4 ${meta.accent}`}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-xs font-semibold uppercase tracking-wider">
                         {meta.short}
                       </div>
-                      <span className={`text-[10px] font-medium rounded-full border px-2 py-0.5 ${meta.chip}`}>
+                      <span
+                        className={`text-[10px] font-medium rounded-full border px-2 py-0.5 ${meta.chip}`}
+                      >
                         {attempts} soal
                       </span>
                     </div>
@@ -228,7 +232,6 @@ export function StemAnalytics() {
             </div>
           </div>
 
-          {/* Weak topics */}
           {weakTopics.length > 0 && (
             <div>
               <h2 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
@@ -239,12 +242,19 @@ export function StemAnalytics() {
                 {weakTopics.map((w, i) => {
                   const meta = getCategoryMeta(w.subject);
                   return (
-                    <div key={`${w.subject}-${w.topic}-${i}`} className="p-3 flex items-center gap-3">
-                      <span className={`text-[10px] font-semibold rounded-full border px-2 py-0.5 shrink-0 ${meta.chip}`}>
+                    <div
+                      key={`${w.subject}-${w.topic}-${i}`}
+                      className="p-3 flex items-center gap-3"
+                    >
+                      <span
+                        className={`text-[10px] font-semibold rounded-full border px-2 py-0.5 shrink-0 ${meta.chip}`}
+                      >
                         {meta.short}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium truncate">{w.topic || "(tanpa topik)"}</div>
+                        <div className="text-sm font-medium truncate">
+                          {w.topic || "(tanpa topik)"}
+                        </div>
                         <div className="text-[11px] text-muted-foreground">
                           {w.correct}/{w.attempts} benar · terakhir {fmtRelative(w.last_seen)}
                         </div>
@@ -252,6 +262,19 @@ export function StemAnalytics() {
                       <div className="text-sm font-bold tabular-nums text-destructive shrink-0">
                         {w.accuracy_pct}%
                       </div>
+                      <Button
+                        asChild
+                        size="sm"
+                        variant="secondary"
+                        className="h-7 text-xs gap-1 shrink-0"
+                      >
+                        <Link
+                          to="/stem"
+                          search={{ topic: w.topic, subject: w.subject, autostart: "1" }}
+                        >
+                          <Play className="w-3 h-3" /> Latihan
+                        </Link>
+                      </Button>
                     </div>
                   );
                 })}
@@ -259,7 +282,6 @@ export function StemAnalytics() {
             </div>
           )}
 
-          {/* Recent sessions */}
           {sessions.length > 0 && (
             <div>
               <h2 className="text-sm font-semibold mb-2">Sesi Terakhir</h2>
@@ -269,7 +291,9 @@ export function StemAnalytics() {
                   const pct = Math.round(s.score);
                   return (
                     <div key={s.id} className="p-3 flex items-center gap-3">
-                      <span className={`text-[10px] font-semibold rounded-full border px-2 py-0.5 shrink-0 ${meta.chip}`}>
+                      <span
+                        className={`text-[10px] font-semibold rounded-full border px-2 py-0.5 shrink-0 ${meta.chip}`}
+                      >
                         {meta.short}
                       </span>
                       <div className="min-w-0 flex-1">
@@ -277,7 +301,8 @@ export function StemAnalytics() {
                           {s.topic || "(tanpa topik)"} · {s.difficulty}
                         </div>
                         <div className="text-[11px] text-muted-foreground">
-                          {s.correct_count}/{s.total_questions} benar · {fmtDuration(s.duration_sec)} · {fmtRelative(s.started_at)}
+                          {s.correct_count}/{s.total_questions} benar · {fmtDuration(s.duration_sec)} ·{" "}
+                          {fmtRelative(s.started_at)}
                           {s.mode === "exam" && " · ujian"}
                         </div>
                       </div>
@@ -303,13 +328,6 @@ export function StemAnalytics() {
     </div>
   );
 }
-
-const SUBJECT_LABEL: Record<string, string> = {
-  umum: "Penalaran Umum",
-  kuantitatif: "Pengetahuan Kuantitatif",
-  matematika: "Penalaran Matematika",
-  custom: "STEM / Mapel Lain",
-};
 
 function StatCard({
   label,
