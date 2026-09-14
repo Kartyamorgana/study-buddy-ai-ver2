@@ -257,11 +257,50 @@
 ::-webkit-scrollbar-thumb:hover { background: var(--color-muted-foreground); }
 
 /* Math (KaTeX) */
-.prose-note .katex { font-size: 1.03em; }
+/* ============================================================================
+   KaTeX — tampilan rumus inline & block
+   ============================================================================ */
+
+.prose-note .katex {
+  font-size: 1.06em;
+  line-height: 1.1;
+}
+
+/* Rumus inline di tengah teks — cegah pecahan merusak jarak antar-baris */
+.prose-note p .katex,
+.prose-note li .katex,
+.prose-note td .katex {
+  vertical-align: baseline;
+}
+
+/* Rumus blok ($$...$$) — beri ruang atas-bawah & scroll horizontal bila panjang */
 .prose-note .katex-display {
-  margin: 1rem 0;
-  padding: 0.4rem 0;
+  margin: 0.9em 0;
+  padding: 0.15em 0;
   overflow-x: auto;
   overflow-y: hidden;
 }
-.prose-note .katex-error { color: var(--color-destructive); }
+
+.prose-note .katex-display > .katex {
+  font-size: 1.18em;
+}
+
+/* Di dalam tabel atau list sempit — kurangi margin */
+.prose-note li .katex-display,
+.prose-note td .katex-display {
+  margin: 0.5em 0;
+}
+
+/* Rumus inline panjang — beri sedikit ruang horizontal */
+.prose-note .katex .mfrac {
+  margin: 0 0.1em;
+}
+
+.prose-note .katex .mop {
+  margin-right: 0.05em;
+}
+
+/* Fallback bila KaTeX gagal render */
+.prose-note .katex-error {
+  color: var(--color-destructive);
+}

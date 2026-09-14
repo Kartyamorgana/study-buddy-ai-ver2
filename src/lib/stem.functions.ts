@@ -21,7 +21,12 @@ const SUBJECT_BRIEF: Record<string, string> = {
 };
 
 const MATH_RULE =
-  "RUMUS (WAJIB): setiap notasi matematika/kimia dibungkus pembatas math — inline `$...$`, blok `$$...$$`. Jangan pernah menulis \\frac, \\sqrt, \\sum, subskrip, atau superskrip di luar pembatas math, dan jangan menaruh rumus di dalam code block.";
+  "ATURAN RUMUS (WAJIB): " +
+  "(1) Pembatas math: inline `$...$`, blok `$$...$$`. " +
+  "(2) Rumus yang mengandung `\\frac`, `\\sum`, `\\prod`, `\\int`, `\\lim`, `\\sqrt` besar, matriks, atau `\\begin{...}` HARUS ditulis sebagai BLOK `$$...$$` di baris sendiri dengan blank line sebelum & sesudahnya — JANGAN inline. " +
+  "(3) Rumus inline `$...$` hanya untuk notasi pendek tanpa pecahan bertingkat (mis. `$x^2$`, `$\\pi r^2$`, `$x \\to \\infty$`, `$a_n$`). " +
+  "(4) Jangan pernah menulis perintah LaTeX di luar pembatas math, dan jangan menaruh rumus di dalam code block. " +
+  "(5) Setelah blok `$$...$$`, jangan lupa baris kosong sebelum lanjut ke teks berikutnya.";
 
 const AnalyzeInput = z.object({
   subject: z.enum(["umum", "kuantitatif", "matematika", "custom"]).default("custom"),
@@ -240,7 +245,7 @@ export const generateStemCheatSheet = createServerFn({ method: "POST" })
       "- formulas: 1-5 rumus inti per section. `latex` HANYA isi LaTeX tanpa pembatas $ (mis. `v = \\\\frac{s}{t}`). `label`: nama singkat atau kapan rumus dipakai (maks 8 kata).",
       "- tips: 2-4 poin singkat (maks 20 kata/poin). Berisi trik menghafal, jebakan umum, atau cara cek cepat. Boleh kosong bila tidak relevan.",
       "- quickRefs: 4-10 glosarium mini. term: nama istilah. meaning: arti singkat maks 15 kata.",
-      "Aturan matematika: setiap notasi matematika/kimia di `brief`, `tips`, `label`, `meaning` dibungkus pembatas math — inline `$...$`. Jangan menulis perintah LaTeX (\\\\frac, \\\\sqrt, dst) di luar pembatas math.",
+      "Aturan matematika di `brief`, `tips`, `label`, `meaning`: notasi pendek pakai inline `$...$` (mis. `$x^2$`, `$\\pi$`, `$v$`). Untuk rumus berpecahan atau panjang, TULIS DI BARIS TERPISAH sebagai blok `$$...$$` dengan blank line sebelum & sesudahnya. Jangan pernah menulis perintah LaTeX (\\\\frac, \\\\sqrt, dst) di luar pembatas math.",
       "Gunakan Bahasa Indonesia.",
     ].join("\n");
 
