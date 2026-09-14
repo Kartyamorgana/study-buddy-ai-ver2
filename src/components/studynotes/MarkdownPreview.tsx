@@ -13,6 +13,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   Copy,
   Check,
@@ -280,6 +281,32 @@ export function MarkdownPreview({ source }: { source: string }) {
         components={{
           blockquote: ({ children }) => <Blockquote>{children}</Blockquote>,
           pre: ({ children }) => <>{children}</>,
+          a: ({ href, children, ...rest }) => {
+            // Link internal (mulai "/") → pakai TanStack Router Link agar SPA tanpa refresh
+            const isInternal = typeof href === "string" && href.startsWith("/");
+            if (isInternal) {
+              return (
+                <Link
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  to={href as any}
+                  className="text-primary underline underline-offset-2 hover:opacity-80 font-medium"
+                >
+                  {children}
+                </Link>
+              );
+            }
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline underline-offset-2 hover:opacity-80"
+                {...rest}
+              >
+                {children}
+              </a>
+            );
+          },
           code: ({
             className,
             children,
