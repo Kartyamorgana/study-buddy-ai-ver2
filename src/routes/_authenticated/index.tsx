@@ -78,6 +78,7 @@ import { StudyMethodsPanel } from "@/components/studynotes/StudyMethodsPanel";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { StemTopNav } from "@/components/stem/StemTopNav";
 import { SignOutButton } from "@/components/studynotes/SignOutButton";
+import { ensureTutorialNote } from "@/lib/onboarding";
 
 type View = "edit" | "preview" | "game" | "methods";
 
@@ -134,14 +135,26 @@ function StudyNotesApp() {
 
   // Load
   useEffect(() => {
-    fetchAll()
-      .then((d) => {
+    (async () => {
+      try {
+        const tutorial = await ensureTutorialNote();
+        const d = await fetchAll();
         setFolders(d.folders);
         setNotes(d.notes);
-        if (d.notes.length > 0) setActiveId(d.notes[0].id);
-      })
-      .catch((e) => toast.error("Gagal memuat data", { description: e.message }))
-      .finally(() => setLoading(false));
+        const first = tutorial
+          ? (d.notes.find((n) => n.id === tutorial.id) ?? tutorial)
+          : d.notes[0];
+        if (first) setActiveId(first.id);
+        if (tutorial) {
+          setView("preview");
+          toast.success("Panduan penggunaan sudah disiapkan untukmu");
+        }
+      } catch (e) {
+        toast.error("Gagal memuat data", { description: (e as Error).message });
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   const active = useMemo(() => notes.find((n) => n.id === activeId) ?? null, [notes, activeId]);
