@@ -26,7 +26,8 @@ const MATH_RULE =
   "(2) Rumus yang mengandung `\\frac`, `\\sum`, `\\prod`, `\\int`, `\\lim`, `\\sqrt` besar, matriks, atau `\\begin{...}` HARUS ditulis sebagai BLOK `$$...$$` di baris sendiri dengan blank line sebelum & sesudahnya — JANGAN inline. " +
   "(3) Rumus inline `$...$` hanya untuk notasi pendek tanpa pecahan bertingkat (mis. `$x^2$`, `$\\pi r^2$`, `$x \\to \\infty$`, `$a_n$`). " +
   "(4) Jangan pernah menulis perintah LaTeX di luar pembatas math, dan jangan menaruh rumus di dalam code block. " +
-  "(5) Setelah blok `$$...$$`, jangan lupa baris kosong sebelum lanjut ke teks berikutnya.";
+  "(5) Setelah blok `$$...$$`, jangan lupa baris kosong sebelum lanjut ke teks berikutnya. " +
+  "(6) PENTING: di dalam JSON, semua backslash LaTeX HARUS ditulis ganda (`\\\\frac`, `\\\\sqrt`, `\\\\lim`, dst) karena JSON memerlukan escaping.";
 
 const AnalyzeInput = z.object({
   subject: z.enum(["umum", "kuantitatif", "matematika", "custom"]).default("custom"),
@@ -56,21 +57,125 @@ const AnalyzeSchema = z.object({
 
 export type StemAnalysis = z.infer<typeof AnalyzeSchema>;
 
-function parseJson<T>(raw: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>): T {
-  try {
-    return schema.parse(JSON.parse(raw));
-  } catch {
-    const m = raw.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error("Format hasil AI tidak valid");
-    return schema.parse(JSON.parse(m[0]));
+/* -------------------------------------------------------------------------- */
+/*  JSON repair — tangani backslash LaTeX yang tidak di-escape AI             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Perbaiki string JSON yang mengandung backslash LaTeX mentah.
+ *
+ * Contoh yang sering dikirim AI (SALAH):
+ *   {"solution": "Gunakan \frac{1}{2}"}       ← \f dianggap form-feed JSON
+ *
+ * Yang kita lakukan: deteksi `\<huruf>` yang bukan escape JSON valid
+ * (atau yang diikuti huruf lagi), lalu jadikan `\\<huruf>`.
+ *
+ * Escape JSON valid yang DIBIARKAN:
+ *   \\  \"  \/  \n  \t  \r  \b  \f  \uXXXX
+ * (tapi \n, \t, dll hanya dianggap escape kalau diikuti non-huruf)
+ */
+function repairJsonEscapes(s: string): string {
+  let out = "";
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+
+    if (c !== "\\") {
+      out += c;
+      i++;
+      continue;
+    }
+
+    const next = s[i + 1];
+
+    // Backslash di akhir string — biarkan
+    if (!next) {
+      out += c;
+      i++;
+      continue;
+    }
+
+    // Sudah escaped: \\  \"  \/
+    if (next === "\\" || next === '"' || next === "/") {
+      out += c + next;
+      i += 2;
+      continue;
+    }
+
+    // \uXXXX valid — biarkan
+    if (next === "u" && /^[0-9a-fA-F]{4}$/.test(s.slice(i + 2, i + 6))) {
+      out += s.slice(i, i + 6);
+      i += 6;
+      continue;
+    }
+
+    // \n \t \r \b \f — escape valid JSON HANYA jika tidak diikuti huruf lain
+    if (/[bfnrt]/.test(next)) {
+      const after = s[i + 2];
+      const isBareEscape = !after || !/[a-zA-Z]/.test(after);
+      if (isBareEscape) {
+        out += c + next;
+        i += 2;
+        continue;
+      }
+      // Bagian dari command LaTeX (mis. \frac, \times, \bigcup, \to) → escape
+      out += "\\\\" + next;
+      i += 2;
+      continue;
+    }
+
+    // \x dengan x bukan escape valid JSON → escape (mis. \alpha, \sqrt)
+    out += "\\\\" + next;
+    i += 2;
   }
+  return out;
 }
+
+/**
+ * Parse hasil AI yang seharusnya JSON, dengan toleransi:
+ * 1. Coba parse as-is
+ * 2. Coba repair escape dulu, lalu parse
+ * 3. Coba cari blok {...} paling luar, ulangi langkah 1-2
+ */
+function parseJson<T>(raw: string, schema: z.ZodType<T, z.ZodTypeDef, unknown>): T {
+  const cleaned = raw.trim();
+
+  const candidates: string[] = [cleaned];
+  const braceMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (braceMatch && braceMatch[0] !== cleaned) {
+    candidates.push(braceMatch[0]);
+  }
+
+  let lastError: Error | null = null;
+
+  for (const candidate of candidates) {
+    // Attempt 1: parse as-is
+    try {
+      return schema.parse(JSON.parse(candidate));
+    } catch (e) {
+      lastError = e as Error;
+    }
+    // Attempt 2: repair escape dulu
+    try {
+      return schema.parse(JSON.parse(repairJsonEscapes(candidate)));
+    } catch (e) {
+      lastError = e as Error;
+    }
+  }
+
+  throw new Error(
+    `Format hasil AI tidak valid: ${lastError?.message ?? "JSON parse gagal"}`,
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  analyzeStemMaterial                                                       */
+/* -------------------------------------------------------------------------- */
 
 export const analyzeStemMaterial = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => AnalyzeInput.parse(d))
   .handler(async ({ data }) => {
     const { chat, stripFences } = await import("./ingest.server");
-
 
     const system = [
       "Kamu tutor STEM & SNBT yang menjelaskan materi hitungan (matematika, fisika, kimia, logika) dengan bahasa sederhana namun akurat.",
@@ -114,6 +219,10 @@ export const analyzeStemMaterial = createServerFn({ method: "POST" })
 
     return parseJson(stripFences(await chat(system, blocks)), AnalyzeSchema);
   });
+
+/* -------------------------------------------------------------------------- */
+/*  generateStemQuiz                                                          */
+/* -------------------------------------------------------------------------- */
 
 const QuizInput = z.object({
   subject: z.enum(["umum", "kuantitatif", "matematika", "custom"]).default("custom"),
@@ -187,9 +296,9 @@ export const generateStemQuiz = createServerFn({ method: "POST" })
     return { questions: questions.slice(0, data.count) };
   });
 
-  // ============================================================================
-// CHEAT SHEET — output ringkas, formula-first
-// ============================================================================
+/* -------------------------------------------------------------------------- */
+/*  generateStemCheatSheet                                                    */
+/* -------------------------------------------------------------------------- */
 
 const CheatSheetInput = z.object({
   subject: z.enum(["umum", "kuantitatif", "matematika", "custom"]).default("custom"),
@@ -246,6 +355,7 @@ export const generateStemCheatSheet = createServerFn({ method: "POST" })
       "- tips: 2-4 poin singkat (maks 20 kata/poin). Berisi trik menghafal, jebakan umum, atau cara cek cepat. Boleh kosong bila tidak relevan.",
       "- quickRefs: 4-10 glosarium mini. term: nama istilah. meaning: arti singkat maks 15 kata.",
       "Aturan matematika di `brief`, `tips`, `label`, `meaning`: notasi pendek pakai inline `$...$` (mis. `$x^2$`, `$\\pi$`, `$v$`). Untuk rumus berpecahan atau panjang, TULIS DI BARIS TERPISAH sebagai blok `$$...$$` dengan blank line sebelum & sesudahnya. Jangan pernah menulis perintah LaTeX (\\\\frac, \\\\sqrt, dst) di luar pembatas math.",
+      "PENTING: di dalam JSON, semua backslash LaTeX HARUS ditulis ganda (`\\\\frac`, `\\\\sqrt`, `\\\\lim`, dst).",
       "Gunakan Bahasa Indonesia.",
     ].join("\n");
 
@@ -258,14 +368,7 @@ export const generateStemCheatSheet = createServerFn({ method: "POST" })
       });
     if (!blocks.length) throw new Error("Tidak ada topik atau materi untuk membuat cheat sheet");
 
-    const raw = stripFences(await chat(system, blocks));
-    try {
-      return CheatSheetSchema.parse(JSON.parse(raw));
-    } catch {
-      const m = raw.match(/\{[\s\S]*\}/);
-      if (!m) throw new Error("Format hasil AI tidak valid");
-      return CheatSheetSchema.parse(JSON.parse(m[0]));
-    }
+    return parseJson(stripFences(await chat(system, blocks)), CheatSheetSchema);
   });
 
 /** Konversi hasil cheat sheet ke Markdown rapi — dipakai untuk save-note & copy. */
