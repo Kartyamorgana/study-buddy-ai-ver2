@@ -71,7 +71,7 @@ type CalloutKey = keyof typeof CALLOUTS | "DETAILS";
 
 // Regex mendukung `[!TYPE]` dan `[!TYPE] summary` (untuk DETAILS)
 const CALLOUT_RE =
-  /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|DETAILS)\](?:[ \t]+([^\n]+?))?[ \t]*\n?/i;
+  /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|DETAILS)\](?:[ \t]+([^\n]+))?[ \t]*\n?/i;
 
 type ExtractedCallout = {
   key: CalloutKey;
