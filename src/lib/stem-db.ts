@@ -150,7 +150,7 @@ export function summarizeByCategory(rows: WeaknessRow[]): CategorySummary[] {
 
 export async function fetchBookmarks(): Promise<StemBookmarkRow[]> {
   const { data, error } = await db()
-    .from("stem_bookmarked_questions")
+    .from("stem_bookmarks")
     .select("*")
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -161,7 +161,7 @@ export async function bookmarkQuestion(
   input: StemBookmarkInsert,
 ): Promise<StemBookmarkRow> {
   const { data, error } = await db()
-    .from("stem_bookmarked_questions")
+    .from("stem_bookmarks")
     .insert(input)
     .select()
     .single();
@@ -171,7 +171,7 @@ export async function bookmarkQuestion(
 
 export async function removeBookmarkByText(questionText: string): Promise<void> {
   const { error } = await db()
-    .from("stem_bookmarked_questions")
+    .from("stem_bookmarks")
     .delete()
     .eq("question_text", questionText);
   if (error) throw error;
@@ -179,7 +179,7 @@ export async function removeBookmarkByText(questionText: string): Promise<void> 
 
 export async function deleteBookmark(id: string): Promise<void> {
   const { error } = await db()
-    .from("stem_bookmarked_questions")
+    .from("stem_bookmarks")
     .delete()
     .eq("id", id);
   if (error) throw error;
