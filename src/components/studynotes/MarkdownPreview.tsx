@@ -79,10 +79,17 @@ type ExtractedCallout = {
   children: ReactNode;
 };
 
+/** Anak berupa string kosong/whitespace (mis. "\n" antar blok) harus diabaikan. */
+const isBlank = (n: ReactNode) => typeof n === "string" && n.trim() === "";
+
 function extractCallout(children: ReactNode): ExtractedCallout | null {
   const arr = Array.isArray(children) ? children : [children];
-  if (arr.length === 0) return null;
-  const first = arr[0];
+  // react-markdown menyisipkan node "\n" antar blok — lewati dulu.
+  const idx = arr.findIndex((c) => !isBlank(c));
+  if (idx === -1) return null;
+  const first = arr[idx];
+  const before = arr.slice(0, idx);
+  const after = arr.slice(idx + 1);
 
   // Kasus A: anak pertama string mentah
   if (typeof first === "string") {
@@ -91,7 +98,7 @@ function extractCallout(children: ReactNode): ExtractedCallout | null {
     const key = m[1]!.toUpperCase() as CalloutKey;
     const summary = m[2]?.trim();
     const rest = first.slice(m[0].length);
-    const remaining = rest.trim() ? [rest, ...arr.slice(1)] : arr.slice(1);
+    const remaining = rest.trim() ? [rest, ...after] : after;
     return { key, summary, children: remaining.length === 1 ? remaining[0] : remaining };
   }
 
@@ -100,7 +107,8 @@ function extractCallout(children: ReactNode): ExtractedCallout | null {
     const el = first as { props?: { children?: ReactNode } };
     const inner = el.props?.children;
     const innerArr = Array.isArray(inner) ? inner : [inner];
-    const firstInner = innerArr[0];
+    const innerIdx = innerArr.findIndex((c) => !isBlank(c));
+    const firstInner = innerIdx === -1 ? undefined : innerArr[innerIdx];
     if (typeof firstInner !== "string") return null;
 
     const m = firstInner.match(CALLOUT_RE);
@@ -109,16 +117,14 @@ function extractCallout(children: ReactNode): ExtractedCallout | null {
     const key = m[1]!.toUpperCase() as CalloutKey;
     const summary = m[2]?.trim();
     const restText = firstInner.slice(m[0].length);
-    const newInnerArr = restText.trim()
-      ? [restText, ...innerArr.slice(1)]
-      : innerArr.slice(1);
+    const tailInner = innerArr.slice(innerIdx + 1);
+    const newInnerArr = restText.trim() ? [restText, ...tailInner] : tailInner;
 
-    const clonedFirst = cloneElement(
-      first as React.ReactElement,
-      {},
-      ...(newInnerArr as ReactNode[]),
-    );
-    const newChildren = [clonedFirst, ...arr.slice(1)];
+    const hasInnerContent = newInnerArr.some((c) => !isBlank(c));
+    const clonedFirst = hasInnerContent
+      ? cloneElement(first as React.ReactElement, {}, ...(newInnerArr as ReactNode[]))
+      : null;
+    const newChildren = [...before, ...(clonedFirst ? [clonedFirst] : []), ...after];
     return {
       key,
       summary,
