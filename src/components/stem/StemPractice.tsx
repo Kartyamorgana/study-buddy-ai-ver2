@@ -215,7 +215,6 @@ export function StemPractice({
       } else {
         await bookmarkQuestion({
           subject,
-          difficulty,
           question_text: q.question,
           type: q.type,
           options: q.options,

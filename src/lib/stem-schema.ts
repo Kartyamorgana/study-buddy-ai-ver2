@@ -71,7 +71,6 @@ export type StemBookmarkRow = {
   id: string;
   user_id: string;
   subject: StemSubject;
-  difficulty: StemDifficulty;
   question_text: string;
   type: "mc" | "num";
   options: string[];
@@ -85,7 +84,6 @@ export type StemBookmarkRow = {
 
 export type StemBookmarkInsert = {
   subject: StemSubject;
-  difficulty: StemDifficulty;
   question_text: string;
   type: "mc" | "num";
   options: string[];
@@ -172,7 +170,7 @@ export type StemDatabase = {
         Update: StemQuestionUpdate;
         Relationships: [];
       };
-      stem_bookmarked_questions: {
+      stem_bookmarks: {
         Row: StemBookmarkRow;
         Insert: StemBookmarkInsert;
         Update: StemBookmarkUpdate;
