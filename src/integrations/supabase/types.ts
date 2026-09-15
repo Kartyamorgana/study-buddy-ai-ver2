@@ -90,6 +90,51 @@ export type Database = {
           },
         ]
       }
+      stem_bookmarks: {
+        Row: {
+          correct_answer: string
+          created_at: string
+          hints: Json
+          id: string
+          note: string | null
+          options: Json
+          question_text: string
+          solution: string
+          subject: string
+          topic: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          correct_answer: string
+          created_at?: string
+          hints?: Json
+          id?: string
+          note?: string | null
+          options?: Json
+          question_text: string
+          solution?: string
+          subject: string
+          topic?: string
+          type?: string
+          user_id?: string
+        }
+        Update: {
+          correct_answer?: string
+          created_at?: string
+          hints?: Json
+          id?: string
+          note?: string | null
+          options?: Json
+          question_text?: string
+          solution?: string
+          subject?: string
+          topic?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       stem_quiz_questions: {
         Row: {
           correct_answer: string
