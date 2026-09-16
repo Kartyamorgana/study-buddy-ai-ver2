@@ -5,14 +5,17 @@ import { toast } from "sonner";
 import {
   BookmarkPlus,
   Check,
+  ChevronDown,
   ClipboardCheck,
   Copy,
   Layers,
   Loader2,
   Search,
+  Sigma,
   Sparkles,
   Zap,
 } from "lucide-react";
+import { FormulaLibrary } from "./FormulaLibrary";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MarkdownPreview } from "@/components/studynotes/MarkdownPreview";
