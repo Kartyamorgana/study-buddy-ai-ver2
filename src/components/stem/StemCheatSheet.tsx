@@ -138,7 +138,8 @@ export function StemCheatSheet({
   /* ------------------------------- FORM ----------------------------------- */
   if (!result) {
     return (
-      <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary grid place-items-center shrink-0">
             <Zap className="w-5 h-5" />
