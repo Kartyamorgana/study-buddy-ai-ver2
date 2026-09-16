@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import {
   BarChart3,
   Bookmark,
+  Compass,
   FlaskConical,
   Moon,
   Notebook,
@@ -118,6 +119,19 @@ export function StemStudioPage({
 
         {/* D — Pomodoro */}
         <StemPomodoro />
+
+        <Button
+          asChild
+          size="sm"
+          variant="ghost"
+          className="h-8 gap-1"
+          title="Panduan interaktif"
+        >
+          <Link to="/guide">
+            <Compass className="w-4 h-4" />
+            <span className="hidden sm:inline text-xs">Panduan</span>
+          </Link>
+        </Button>
 
         {/* C — Bookmarks */}
         <Button

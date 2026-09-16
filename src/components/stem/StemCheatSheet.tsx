@@ -5,14 +5,17 @@ import { toast } from "sonner";
 import {
   BookmarkPlus,
   Check,
+  ChevronDown,
   ClipboardCheck,
   Copy,
   Layers,
   Loader2,
   Search,
+  Sigma,
   Sparkles,
   Zap,
 } from "lucide-react";
+import { FormulaLibrary } from "./FormulaLibrary";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MarkdownPreview } from "@/components/studynotes/MarkdownPreview";
@@ -46,6 +49,39 @@ function CopyFormulaButton({ latex }: { latex: string }) {
     >
       {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
+  );
+}
+
+/** Daftar rumus bawaan (Matematika · Fisika · Kimia · Biologi) yang bisa dicari. */
+function BuiltInFormulas() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-accent/50"
+      >
+        <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary grid place-items-center shrink-0">
+          <Sigma className="w-4 h-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold">Rumus bawaan SNBT</div>
+          <div className="text-[11px] text-muted-foreground">
+            Matematika · Fisika · Kimia · Biologi — bisa dicari &amp; disalin
+          </div>
+        </div>
+        <ChevronDown
+          className={`w-4 h-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && (
+        <div className="h-[65vh] max-h-[560px] border-t border-border">
+          <FormulaLibrary />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -138,7 +174,8 @@ export function StemCheatSheet({
   /* ------------------------------- FORM ----------------------------------- */
   if (!result) {
     return (
-      <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary grid place-items-center shrink-0">
             <Zap className="w-5 h-5" />
@@ -169,6 +206,9 @@ export function StemCheatSheet({
           Tip: setelah analisis materi di tab sebelumnya, cheat sheet akan otomatis memakai materi
           tersebut sebagai acuan.
         </p>
+        </div>
+
+        <BuiltInFormulas />
       </div>
     );
   }
@@ -338,6 +378,8 @@ export function StemCheatSheet({
           </dl>
         </div>
       )}
+
+      <BuiltInFormulas />
     </div>
   );
 }
