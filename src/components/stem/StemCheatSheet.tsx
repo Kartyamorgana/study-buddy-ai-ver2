@@ -342,6 +342,8 @@ export function StemCheatSheet({
           </dl>
         </div>
       )}
+
+      <BuiltInFormulas />
     </div>
   );
 }
