@@ -49,6 +49,39 @@ function CopyFormulaButton({ latex }: { latex: string }) {
   );
 }
 
+/** Daftar rumus bawaan (Matematika · Fisika · Kimia · Biologi) yang bisa dicari. */
+function BuiltInFormulas() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-accent/50"
+      >
+        <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary grid place-items-center shrink-0">
+          <Sigma className="w-4 h-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold">Rumus bawaan SNBT</div>
+          <div className="text-[11px] text-muted-foreground">
+            Matematika · Fisika · Kimia · Biologi — bisa dicari &amp; disalin
+          </div>
+        </div>
+        <ChevronDown
+          className={`w-4 h-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && (
+        <div className="h-[65vh] max-h-[560px] border-t border-border">
+          <FormulaLibrary />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GlossaryItem({ term, meaning }: { term: string; meaning: string }) {
   return (
     <div className="py-2 border-b border-border/50 last:border-0">
