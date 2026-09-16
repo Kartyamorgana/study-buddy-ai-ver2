@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import {
   BarChart3,
   Bookmark,
+  Compass,
   FlaskConical,
   Moon,
   Notebook,
