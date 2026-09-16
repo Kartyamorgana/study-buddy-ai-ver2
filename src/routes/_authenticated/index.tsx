@@ -470,7 +470,13 @@ function StudyNotesApp() {
         }`}
       >
         <div className="p-3 border-b border-sidebar-border">
-            <StemTopNav size="comfortable" className="mb-3" />
+            <StemTopNav size="comfortable" className="mb-2" />
+            <Link
+              to="/guide"
+              className="mb-3 flex items-center justify-center gap-1.5 rounded-md border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+            >
+              <Compass className="w-3.5 h-3.5" /> Panduan interaktif
+            </Link>
             <div className="flex items-center gap-2 mb-3">
             <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground grid place-items-center">
               <BookOpen className="w-4 h-4" />
