@@ -169,6 +169,9 @@ export function StemCheatSheet({
           Tip: setelah analisis materi di tab sebelumnya, cheat sheet akan otomatis memakai materi
           tersebut sebagai acuan.
         </p>
+        </div>
+
+        <BuiltInFormulas />
       </div>
     );
   }
